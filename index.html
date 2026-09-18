@@ -544,8 +544,8 @@ document.getElementById('orderSubmitBtn').addEventListener('click', async ()=>{
   if(!orderCtx) return;
   const qty = (document.getElementById('orderQty').value || '1').trim();
   const note = document.getElementById('orderNote').value.trim();
-  let msg = `Tôi muốn đặt hàng:\n- Sản phẩm: ${orderCtx.ten}\n- Số lượng: ${qty}`;
-  if(note) msg += `\n- Ghi chú: ${note}`;
+  let msg = `Đặt in: "${orderCtx.ten}"\nSố lượng: ${qty}`;
+  if(note) msg += `\nGhi chú: ${note}`;
   await copyToClipboard(msg);
   showToast('Đã copy nội dung đơn — dán vào khung chat Zalo vừa mở (Ctrl+V hoặc giữ nhấn > Dán)');
   window.open(`https://zalo.me/${ZALO_PHONE}`, '_blank');
