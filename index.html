@@ -115,6 +115,15 @@
   .toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(6px); background:var(--ink); color:var(--white); padding:11px 20px; border-radius:var(--radius-sm); font-size:13px; font-weight:600; box-shadow:var(--shadow-md); opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:100; }
   .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
+  /* ---------- GIỎ HÀNG ---------- */
+  .cart-fab{ position:fixed; right:20px; bottom:24px; bottom:calc(24px + env(safe-area-inset-bottom)); z-index:200; display:none; align-items:center; justify-content:center; gap:7px; background:var(--red); color:var(--white); border:none; border-radius:100px; padding:14px 20px; font-size:16px; font-weight:800; box-shadow:0 4px 14px rgba(229,52,43,.4); cursor:pointer; }
+  .cart-fab:hover{ background:var(--red-dark); }
+  .cart-line{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .cart-line:last-child{ border-bottom:none; }
+  .cart-line-name{ font-weight:700; font-size:13.5px; color:var(--ink); line-height:1.4; }
+  .cart-line-meta{ font-size:12px; color:var(--ink-soft); margin-top:3px; line-height:1.5; white-space:pre-wrap; }
+  .cart-line-actions{ display:flex; gap:6px; flex-shrink:0; }
+
   @media (max-width:520px){
     .app{ padding:16px 14px 60px; }
     .header .tagline{ font-size:18px; }
@@ -156,6 +165,8 @@
     <div class="empty" id="spEmpty" style="display:none;">Chưa có sản phẩm nào.</div>
   </div>
 </div>
+
+<button class="cart-fab" id="cartFab" style="display:none;">🛒 <span id="cartFabCount">0</span></button>
 
 <!-- MODAL: đăng nhập -->
 <div class="kt-modal-overlay" id="loginModalOverlay">
@@ -231,7 +242,7 @@
 <div class="kt-modal-overlay" id="orderModalOverlay">
   <div class="kt-modal" style="max-width:380px;">
     <div class="kt-modal-head">
-      <h3>Đặt hàng</h3>
+      <h3 id="orderModalTitle">Thêm vào đơn hàng</h3>
       <button class="kt-modal-close" id="orderModalCloseBtn">&times;</button>
     </div>
     <div class="kt-modal-body">
@@ -251,7 +262,27 @@
     <div class="kt-modal-footer">
       <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
         <button class="btn-ghost" id="orderCancelBtn">Hủy</button>
-        <button class="btn-stamp" id="orderSubmitBtn">Đặt hàng qua Zalo</button>
+        <button class="btn-stamp" id="orderSubmitBtn">Thêm</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: xem lại giỏ hàng -->
+<div class="kt-modal-overlay" id="cartModalOverlay">
+  <div class="kt-modal" style="max-width:460px;">
+    <div class="kt-modal-head">
+      <h3>Đơn hàng của bạn</h3>
+      <button class="kt-modal-close" id="cartModalCloseBtn">&times;</button>
+    </div>
+    <div class="kt-modal-body">
+      <div id="cartList"></div>
+      <div class="empty" id="cartEmpty" style="display:none; padding:20px 0;">Chưa có sản phẩm nào trong đơn hàng.</div>
+    </div>
+    <div class="kt-modal-footer">
+      <button class="btn-ghost" id="cartClearBtn">Xóa hết</button>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+        <button class="btn-stamp" id="cartSendBtn">Gửi đơn qua Zalo</button>
       </div>
     </div>
   </div>
@@ -347,7 +378,7 @@ function renderGrid(){
     const noteHtml = p.ghi_chu ? `<div class="sp-card-note">${escapeHtml(p.ghi_chu)}</div>` : '';
     const actionsHtml = `<div class="sp-card-actions">
         ${isAdmin ? `<button class="btn-ghost btn-small" data-edit="${p.id}">Sửa</button>` : ''}
-        <button class="btn-stamp btn-small" data-order="${p.id}">Đặt hàng</button>
+        <button class="btn-stamp btn-small" data-order="${p.id}">Thêm vào đơn hàng</button>
       </div>`;
     card.innerHTML = `
       ${hiddenBadge}
@@ -498,27 +529,15 @@ document.getElementById('spMDeleteBtn').addEventListener('click', async ()=>{
   }
 });
 
-/* ---------- ĐẶT HÀNG QUA ZALO ---------- */
+/* ---------- GIỎ HÀNG + GỬI ĐƠN QUA ZALO ---------- */
 // TODO: thay bằng số điện thoại Zalo nhận đơn — định dạng: mã quốc gia 84 + số, bỏ số 0 đầu
 // VD: số 0987 654 321  ->  '84987654321'
 const ZALO_PHONE = '84368057001';
 
-let orderCtx = null;
+let cart = []; // { lineId, productId, ten, qty, note }
+let cartLineSeq = 1;
+let orderCtx = null; // { mode:'add'|'edit', productId, ten, lineId }
 
-function openOrderModal(id){
-  const p = spProducts.find(x=>x.id===id);
-  if(!p) return;
-  orderCtx = { id: p.id, ten: p.ten };
-  document.getElementById('orderProductName').textContent = p.ten;
-  document.getElementById('orderQty').value = 1;
-  document.getElementById('orderNote').value = '';
-  document.getElementById('orderModalOverlay').classList.add('open');
-  setTimeout(()=> document.getElementById('orderQty').focus(), 50);
-}
-function closeOrderModal(){
-  document.getElementById('orderModalOverlay').classList.remove('open');
-  orderCtx = null;
-}
 function fallbackCopy(text){
   const ta = document.createElement('textarea');
   ta.value = text;
@@ -538,18 +557,127 @@ async function copyToClipboard(text){
   }catch(e){ /* rơi xuống cách dự phòng */ }
   fallbackCopy(text);
 }
+
+/* ---- popup nhập số lượng + ghi chú (thêm mới hoặc sửa 1 dòng đã có) ---- */
+function openOrderModal(id){
+  const p = spProducts.find(x=>x.id===id);
+  if(!p) return;
+  orderCtx = { mode:'add', productId: p.id, ten: p.ten, lineId: null };
+  document.getElementById('orderModalTitle').textContent = 'Thêm vào đơn hàng';
+  document.getElementById('orderProductName').textContent = p.ten;
+  document.getElementById('orderQty').value = 1;
+  document.getElementById('orderNote').value = '';
+  document.getElementById('orderSubmitBtn').textContent = 'Thêm';
+  document.getElementById('orderModalOverlay').classList.add('open');
+  setTimeout(()=> document.getElementById('orderQty').focus(), 50);
+}
+function openEditCartLine(lineId){
+  const line = cart.find(l=>l.lineId===lineId);
+  if(!line) return;
+  orderCtx = { mode:'edit', productId: line.productId, ten: line.ten, lineId: line.lineId };
+  document.getElementById('orderModalTitle').textContent = 'Sửa sản phẩm trong đơn';
+  document.getElementById('orderProductName').textContent = line.ten;
+  document.getElementById('orderQty').value = line.qty;
+  document.getElementById('orderNote').value = line.note || '';
+  document.getElementById('orderSubmitBtn').textContent = 'Cập nhật';
+  document.getElementById('orderModalOverlay').classList.add('open');
+  setTimeout(()=> document.getElementById('orderQty').focus(), 50);
+}
+function closeOrderModal(){
+  document.getElementById('orderModalOverlay').classList.remove('open');
+  orderCtx = null;
+}
 document.getElementById('orderModalCloseBtn').addEventListener('click', closeOrderModal);
 document.getElementById('orderCancelBtn').addEventListener('click', closeOrderModal);
-document.getElementById('orderSubmitBtn').addEventListener('click', async ()=>{
+document.getElementById('orderSubmitBtn').addEventListener('click', ()=>{
   if(!orderCtx) return;
   const qty = (document.getElementById('orderQty').value || '1').trim();
   const note = document.getElementById('orderNote').value.trim();
-  let msg = `Đặt in: "${orderCtx.ten}"\nSố lượng: ${qty}`;
-  if(note) msg += `\nGhi chú: ${note}`;
-  await copyToClipboard(msg);
+  if(orderCtx.mode === 'edit'){
+    const line = cart.find(l=>l.lineId===orderCtx.lineId);
+    if(line){ line.qty = qty; line.note = note; }
+    showToast('Đã cập nhật sản phẩm trong đơn hàng');
+  } else {
+    cart.push({ lineId: cartLineSeq++, productId: orderCtx.productId, ten: orderCtx.ten, qty, note });
+    showToast('Đã thêm vào đơn hàng');
+  }
+  updateCartFab();
+  renderCartList();
+  closeOrderModal();
+});
+
+/* ---- icon giỏ hàng nổi + bảng xem lại đơn hàng ---- */
+function updateCartFab(){
+  const fab = document.getElementById('cartFab');
+  if(!cart.length){
+    fab.style.display = 'none';
+    return;
+  }
+  fab.style.display = 'flex';
+  document.getElementById('cartFabCount').textContent = cart.length;
+}
+function renderCartList(){
+  const listEl = document.getElementById('cartList');
+  const emptyEl = document.getElementById('cartEmpty');
+  emptyEl.style.display = cart.length ? 'none' : 'block';
+  listEl.innerHTML = '';
+  cart.forEach(line=>{
+    const div = document.createElement('div');
+    div.className = 'cart-line';
+    const metaText = `SL: ${line.qty}` + (line.note ? ` · ${line.note}` : '');
+    div.innerHTML = `
+      <div class="cart-line-info">
+        <div class="cart-line-name">${escapeHtml(line.ten)}</div>
+        <div class="cart-line-meta">${escapeHtml(metaText)}</div>
+      </div>
+      <div class="cart-line-actions">
+        <button class="btn-ghost btn-small" data-cart-edit="${line.lineId}">Sửa</button>
+        <button class="btn-danger btn-small" data-cart-del="${line.lineId}">Xóa</button>
+      </div>`;
+    listEl.appendChild(div);
+  });
+  listEl.querySelectorAll('[data-cart-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=> openEditCartLine(parseInt(btn.getAttribute('data-cart-edit'), 10)));
+  });
+  listEl.querySelectorAll('[data-cart-del]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const lineId = parseInt(btn.getAttribute('data-cart-del'), 10);
+      cart = cart.filter(l=>l.lineId !== lineId);
+      updateCartFab();
+      renderCartList();
+    });
+  });
+}
+function openCartModal(){
+  renderCartList();
+  document.getElementById('cartModalOverlay').classList.add('open');
+}
+function closeCartModal(){
+  document.getElementById('cartModalOverlay').classList.remove('open');
+}
+document.getElementById('cartFab').addEventListener('click', openCartModal);
+document.getElementById('cartModalCloseBtn').addEventListener('click', closeCartModal);
+document.getElementById('cartClearBtn').addEventListener('click', ()=>{
+  if(!cart.length) return;
+  if(!confirm('Xóa hết sản phẩm trong đơn hàng?')) return;
+  cart = [];
+  updateCartFab();
+  renderCartList();
+});
+document.getElementById('cartSendBtn').addEventListener('click', async ()=>{
+  if(!cart.length){ showToast('Chưa có sản phẩm nào trong đơn hàng'); return; }
+  let msg = 'Đặt hàng:\n';
+  cart.forEach((line, idx)=>{
+    msg += `${idx+1}. ${line.ten} — SL: ${line.qty}`;
+    if(line.note) msg += ` (Ghi chú: ${line.note})`;
+    msg += '\n';
+  });
+  await copyToClipboard(msg.trim());
   showToast('Đã copy nội dung đơn — dán vào khung chat Zalo vừa mở (Ctrl+V hoặc giữ nhấn > Dán)');
   window.open(`https://zalo.me/${ZALO_PHONE}`, '_blank');
-  closeOrderModal();
+  cart = [];
+  updateCartFab();
+  closeCartModal();
 });
 
 /* ---------- AUTH (dùng chung app_users với các web khác) ---------- */
