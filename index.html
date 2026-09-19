@@ -86,6 +86,26 @@
   .sp-card-actions{ display:flex; gap:6px; margin-top:auto; padding-top:6px; }
   .sp-card-actions button{ flex:1; padding:8px 6px; font-size:12px; }
 
+  /* thẻ bộ (nhóm nhiều mã) */
+  .sp-grid{ align-items:start; }
+  .sp-group-badge{ position:absolute; top:9px; right:9px; font-size:11px; font-weight:800; color:var(--white); background:var(--red); padding:4px 10px; border-radius:100px; z-index:2; box-shadow:0 2px 6px rgba(0,0,0,.18); }
+  .sp-group-list{ display:none; flex-direction:column; gap:2px; border-top:1px solid var(--line); margin-top:4px; padding-top:6px; }
+  .sp-card.open .sp-group-list{ display:flex; }
+  .sp-group-row{ display:flex; align-items:center; gap:9px; padding:6px 0; border-bottom:1px solid var(--line); }
+  .sp-group-row:last-child{ border-bottom:none; }
+  .sp-mini-img{ width:40px; height:40px; flex-shrink:0; border-radius:8px; background:var(--surface-alt); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .sp-mini-img img{ width:100%; height:100%; object-fit:contain; cursor:zoom-in; }
+  .sp-mini-img .sp-noimg{ font-size:9px; color:var(--ink-faint); }
+  .sp-group-row-name{ flex:1; font-size:12.5px; line-height:1.35; color:var(--ink); }
+  .sp-group-row-main{ flex:1; min-width:0; }
+  .sp-group-row-main .sp-group-row-name{ flex:none; }
+  .sp-group-row-btns{ display:flex; flex-wrap:wrap; gap:6px; margin-top:5px; }
+  .sp-group-row-btns button{ padding:5px 10px; font-size:11.5px; min-height:0; }
+  .sp-cover-tag{ font-size:11px; font-weight:800; color:var(--red-dark); display:inline-flex; align-items:center; padding:5px 4px; }
+  .sp-group-row.match .sp-group-row-name{ font-weight:800; color:var(--red-dark); }
+  .sp-group-row-tag{ font-size:10.5px; font-weight:700; color:var(--amber-dark); }
+  .sp-group-actions{ display:flex; flex-direction:column; gap:6px; margin-top:auto; padding-top:6px; }
+  .sp-group-actions button{ width:100%; padding:8px 6px; font-size:12px; }
   .sp-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
   .sp-count{ font-size:12.5px; color:var(--ink-soft); font-weight:600; }
 
@@ -337,7 +357,7 @@ function showToast(msg){
 const IMG_BUCKET = 'san-pham';
 const IMG_FULL_MAX = 1000;  // cạnh dài nhất của ảnh lớn (px)
 const IMG_THUMB_MAX = 420;  // cạnh dài nhất của ảnh nhỏ trên lưới (px)
-const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer,nhom';
+const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer,nhom,nhom_dai_dien';
 const IMG_PUBLIC_MARKER = `${SUPABASE_URL}/storage/v1/object/public/${IMG_BUCKET}/`;
 
 function spIsStorageUrl(url){ return typeof url === 'string' && url.startsWith(IMG_PUBLIC_MARKER); }
@@ -442,7 +462,7 @@ function spNextCode(){
 }
 // Tính sẵn 1 lần khi tải/sửa: tên không dấu (để tìm nhanh) và mã (để sắp xếp nhanh)
 function spPrep(p){
-  p._q = spNormalizeSearch(p.ten);
+  p._q = spNormalizeSearch(p.ten + ' ' + (p.nhom || ''));
   p._code = spProductCode(p.ten);
   p._nhom = spNormalizeSearch((p.nhom || '').trim());   // khóa so sánh nhóm (không phân biệt hoa/thường/dấu)
   return p;
@@ -476,28 +496,20 @@ function spFilteredProducts(){
     return !q || p._q.includes(q);
   });
 }
-function renderGrid(){
-  const grid = document.getElementById('spGrid');
-  const isAdmin = currentRole === 'editor';
-  const list = spFilteredProducts();
-  document.getElementById('spCount').textContent = list.length ? `${list.length} sản phẩm` : '';
-  document.getElementById('spEmpty').style.display = list.length ? 'none' : 'block';
-  const html = [];
-  for(const p of list){
-    const hiddenBadge = (isAdmin && !p.hien_thi_viewer) ? '<div class="sp-hidden-badge">Ẩn với viewer</div>' : '';
-    let imgHtml;
-    if(!p.hinh_anh){
-      imgHtml = `<span class="sp-noimg">Chưa có ảnh</span>`;
-    } else if(spIsStorageUrl(p.hinh_anh)){
-      // lưới dùng ảnh nhỏ; data-full là ảnh lớn để phóng to (và để dự phòng nếu ảnh nhỏ lỗi)
-      imgHtml = `<img src="${spThumbUrl(p.hinh_anh)}" data-full="${p.hinh_anh}" alt="" loading="lazy" decoding="async">`;
-    } else {
-      imgHtml = `<img src="${p.hinh_anh}" alt="" loading="lazy" decoding="async">`; // ảnh cũ base64
-    }
-    const noteHtml = p.ghi_chu ? `<div class="sp-card-note">${escapeHtml(p.ghi_chu)}</div>` : '';
-    html.push(`<div class="sp-card">
+function spImgHtml(p){
+  if(!p.hinh_anh) return `<span class="sp-noimg">Chưa có ảnh</span>`;
+  if(spIsStorageUrl(p.hinh_anh)){
+    // lưới dùng ảnh nhỏ; data-full là ảnh lớn để phóng to (và để dự phòng nếu ảnh nhỏ lỗi)
+    return `<img src="${spThumbUrl(p.hinh_anh)}" data-full="${p.hinh_anh}" alt="" loading="lazy" decoding="async">`;
+  }
+  return `<img src="${p.hinh_anh}" alt="" loading="lazy" decoding="async">`; // ảnh cũ base64
+}
+function spCardHtml(p, isAdmin){
+  const hiddenBadge = (isAdmin && !p.hien_thi_viewer) ? '<div class="sp-hidden-badge">Ẩn với viewer</div>' : '';
+  const noteHtml = p.ghi_chu ? `<div class="sp-card-note">${escapeHtml(p.ghi_chu)}</div>` : '';
+  return `<div class="sp-card">
       ${hiddenBadge}
-      <div class="sp-card-img">${imgHtml}</div>
+      <div class="sp-card-img">${spImgHtml(p)}</div>
       <div class="sp-card-body">
         <div class="sp-card-name">${escapeHtml(p.ten)}</div>
         ${noteHtml}
@@ -506,7 +518,94 @@ function renderGrid(){
           <button class="btn-stamp btn-small" data-order="${p.id}">Thêm vào đơn hàng</button>
         </div>
       </div>
-    </div>`);
+    </div>`;
+}
+// Thẻ bộ: gộp các mã cùng nhóm thành 1 thẻ; bấm "Xem N mã" để xổ danh sách từng mã
+const spOpenGroups = new Set();
+function spGroupCardHtml(key, members, matchIds, searching, isAdmin){
+  // Sản phẩm đại diện: mã admin chỉ định; chưa chỉ định thì lấy mã đầu tiên có ảnh (hoặc mã đầu tiên)
+  const cover = members.find(m=>m.nhom_dai_dien) || members.find(m=>m.hinh_anh) || members[0];
+  const open = searching || spOpenGroups.has(key);
+  const rows = members.map(m=>{
+    const mini = m.hinh_anh ? spImgHtml(m) : `<span class="sp-noimg">Chưa có ảnh</span>`;
+    const hid = (isAdmin && !m.hien_thi_viewer) ? '<div class="sp-group-row-tag">Ẩn với viewer</div>' : '';
+    let btns = '';
+    if(isAdmin){
+      const coverBtn = m.id === cover.id
+        ? '<span class="sp-cover-tag">✓ Đang hiển thị</span>'
+        : `<button class="btn-ghost btn-small" data-set-cover="${m.id}">Hiển thị ảnh này</button>`;
+      btns = `<div class="sp-group-row-btns">${coverBtn}<button class="btn-ghost btn-small" data-edit="${m.id}">Sửa</button></div>`;
+    }
+    return `<div class="sp-group-row${matchIds.has(m.id) ? ' match' : ''}">
+        <div class="sp-mini-img">${mini}</div>
+        <div class="sp-group-row-main">
+          <div class="sp-group-row-name">${escapeHtml(m.ten)}${hid}</div>
+          ${btns}
+        </div>
+      </div>`;
+  }).join('');
+  return `<div class="sp-card sp-group${open ? ' open' : ''}" data-group-card="${escapeHtml(key)}">
+      <div class="sp-group-badge">${members.length} nhãn</div>
+      <div class="sp-card-img">${spImgHtml(cover)}</div>
+      <div class="sp-card-body">
+        <div class="sp-card-name">${escapeHtml(cover.ten)}</div>
+        <div class="sp-group-list">${rows}</div>
+        <div class="sp-group-actions">
+          <button class="btn-ghost btn-small" data-toggle-group="${escapeHtml(key)}" data-count="${members.length}">${open ? 'Thu gọn ▴' : `Xem ${members.length} mã ▾`}</button>
+          <button class="btn-stamp btn-small" data-order-group="${escapeHtml(key)}">Thêm vào đơn hàng</button>
+        </div>
+      </div>
+    </div>`;
+}
+// Admin chọn mã đại diện cho bộ: mã này bật, các mã khác cùng nhóm tắt
+async function spSetGroupCover(id, btn){
+  const p = spProducts.find(x=>x.id === id);
+  if(!p || !p._nhom) return;
+  const others = spProducts.filter(x=> x._nhom === p._nhom && x.id !== id && x.nhom_dai_dien).map(x=>x.id);
+  if(btn) btn.disabled = true;
+  try{
+    if(others.length){
+      const r = await sbClient.from('san_pham').update({ nhom_dai_dien:false }).in('id', others).select('id');
+      if(r.error) throw r.error;
+    }
+    const {data, error} = await sbClient.from('san_pham').update({ nhom_dai_dien:true }).eq('id', id).select('id').maybeSingle();
+    if(error) throw error;
+    if(!data) throw new Error('Không cập nhật được (không có quyền?)');
+    spProducts.forEach(x=>{ if(x._nhom === p._nhom) x.nhom_dai_dien = (x.id === id); });
+    renderGrid();
+    showToast('Đã chọn ảnh hiển thị cho bộ');
+  }catch(e){
+    console.error('set cover:', e);
+    if(btn) btn.disabled = false;
+    showToast('Lỗi. (Bảng san_pham đã có cột "nhom_dai_dien" trên Supabase chưa?)');
+  }
+}
+function renderGrid(){
+  const grid = document.getElementById('spGrid');
+  const isAdmin = currentRole === 'editor';
+  const list = spFilteredProducts();
+  const searching = spNormalizeSearch(spSearchQuery.trim()) !== '';
+  document.getElementById('spCount').textContent = list.length ? `${list.length} sản phẩm` : '';
+  document.getElementById('spEmpty').style.display = list.length ? 'none' : 'block';
+  // các nhóm (chỉ tính sản phẩm khách được thấy): nhóm có từ 2 mã trở lên mới gộp thành thẻ bộ
+  const groups = new Map();
+  spProducts.forEach(p=>{
+    if(!p._nhom || (!isAdmin && !p.hien_thi_viewer)) return;
+    if(!groups.has(p._nhom)) groups.set(p._nhom, []);
+    groups.get(p._nhom).push(p);
+  });
+  const matchIds = new Set(list.map(p=>p.id));
+  const seen = new Set();
+  const html = [];
+  for(const p of list){
+    const members = p._nhom ? groups.get(p._nhom) : null;
+    if(members && members.length > 1){
+      if(seen.has(p._nhom)) continue;   // cả nhóm chỉ hiện 1 thẻ, tại vị trí mã đầu tiên khớp
+      seen.add(p._nhom);
+      html.push(spGroupCardHtml(p._nhom, members, matchIds, searching, isAdmin));
+    } else {
+      html.push(spCardHtml(p, isAdmin));
+    }
   }
   grid.innerHTML = html.join('');
 }
@@ -517,7 +616,21 @@ spGridEl.addEventListener('click', (e)=>{
   if(editBtn){ openProductModal('edit', editBtn.getAttribute('data-edit')); return; }
   const orderBtn = e.target.closest('[data-order]');
   if(orderBtn){ openOrderModal(orderBtn.getAttribute('data-order')); return; }
-  const img = e.target.closest('.sp-card-img img');
+  const coverBtn = e.target.closest('[data-set-cover]');
+  if(coverBtn){ spSetGroupCover(coverBtn.getAttribute('data-set-cover'), coverBtn); return; }
+  const orderGroupBtn = e.target.closest('[data-order-group]');
+  if(orderGroupBtn){ openOrderModal(null, orderGroupBtn.getAttribute('data-order-group')); return; }
+  const toggleBtn = e.target.closest('[data-toggle-group]');
+  if(toggleBtn){
+    const key = toggleBtn.getAttribute('data-toggle-group');
+    const card = toggleBtn.closest('.sp-card');
+    const open = !card.classList.contains('open');
+    card.classList.toggle('open', open);
+    if(open) spOpenGroups.add(key); else spOpenGroups.delete(key);
+    toggleBtn.textContent = open ? 'Thu gọn ▴' : `Xem ${toggleBtn.getAttribute('data-count')} mã ▾`;
+    return;
+  }
+  const img = e.target.closest('.sp-card-img img, .sp-mini-img img');
   if(img) openImgLightbox(img.getAttribute('data-full') || img.src);
 });
 // Ảnh nhỏ lỗi/chưa có thì tự dùng ảnh lớn
@@ -702,6 +815,10 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     hien_thi_viewer: document.getElementById('spMVisible').checked,
     nhom: document.getElementById('spMNhom').value.trim() || null,
   };
+  if(ctx.mode === 'edit'){
+    const old = spProducts.find(x=>x.id === ctx.id);
+    if(old && old.nhom_dai_dien && old._nhom !== spNormalizeSearch(payload.nhom || '')) payload.nhom_dai_dien = false;
+  }
   ctx.saving = true; saveBtn.disabled = true; delBtn.disabled = true;
   let stage = 'upload';
   let uploadedUrl = null;
@@ -746,7 +863,7 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     if(uploadedUrl) await spRemoveImageFiles(uploadedUrl); // dọn ảnh vừa tải lên nếu lưu thất bại
     statusEl.textContent = stage === 'upload'
       ? 'Lỗi tải ảnh lên. (Đã tạo bucket "san-pham" và cấp quyền trên Supabase chưa?)'
-      : 'Lỗi khi lưu. (Bảng san_pham đã có cột "nhom" trên Supabase chưa?)';
+      : 'Lỗi khi lưu. (Bảng san_pham đã có 2 cột "nhom" và "nhom_dai_dien" trên Supabase chưa?)';
     ctx.saving = false; saveBtn.disabled = false; delBtn.disabled = false;
   }
 });
@@ -868,6 +985,7 @@ function orderRowHtml(pid, ten, qty, note, opts){
 function updateOrderSubmitLabel(){
   if(!orderCtx || orderCtx.mode === 'edit') return;
   const n = document.querySelectorAll('#orderRows .order-row').length;
+  document.querySelectorAll('#orderRows [data-row-del]').forEach(b=>{ b.style.display = n <= 1 ? 'none' : ''; });
   document.getElementById('orderSubmitBtn').textContent = n > 1 ? `Thêm ${n} sản phẩm` : 'Thêm';
 }
 function spGroupMates(p){
@@ -875,18 +993,32 @@ function spGroupMates(p){
   const isAdmin = currentRole === 'editor';
   return spProducts.filter(x=> x.id !== p.id && x._nhom === p._nhom && (isAdmin || x.hien_thi_viewer));
 }
-function openOrderModal(id){
-  const p = spProducts.find(x=>x.id===id);
-  if(!p) return;
-  orderCtx = { mode:'add', productId: p.id, ten: p.ten, lineId: null };
-  const mates = spGroupMates(p);
-  const rows = [orderRowHtml(p.id, p.ten, 1, '', { removable:false })];
-  mates.forEach(m=> rows.push(orderRowHtml(m.id, m.ten, 1, '', { removable:true, tag:'Đặt kèm' })));
+function spVisibleGroup(key){
+  const isAdmin = currentRole === 'editor';
+  return spProducts.filter(x=> x._nhom === key && (isAdmin || x.hien_thi_viewer));
+}
+// openOrderModal(id): đặt 1 mã (kèm các mã cùng nhóm nếu có)
+// openOrderModal(null, khóaNhóm): đặt từ thẻ bộ — hiện cả bộ, mã nào cũng bỏ được (giữ lại ít nhất 1 mã)
+function openOrderModal(id, groupKey){
+  const isGroup = !!groupKey;
+  let list;
+  if(isGroup){
+    list = spVisibleGroup(groupKey);
+  } else {
+    const p = spProducts.find(x=>x.id===id);
+    list = p ? [p, ...spGroupMates(p)] : [];
+  }
+  if(!list.length) return;
+  orderCtx = { mode:'add', productId: list[0].id, ten: list[0].ten, lineId: null };
+  const rows = list.map((x, i)=> orderRowHtml(x.id, x.ten, 1, '', {
+    removable: isGroup ? true : i > 0,
+    tag: (!isGroup && i > 0) ? 'Đặt kèm' : ''
+  }));
   document.getElementById('orderModalTitle').textContent = 'Thêm vào đơn hàng';
   document.getElementById('orderRows').innerHTML = rows.join('');
   const hint = document.getElementById('orderGroupHint');
-  hint.style.display = mates.length ? 'block' : 'none';
-  hint.innerHTML = mates.length ? `Sản phẩm này gồm <b>${mates.length + 1} nhãn</b>. Bấm "Bỏ" ở mã nào bạn không muốn đặt chung.` : '';
+  hint.style.display = list.length > 1 ? 'block' : 'none';
+  hint.innerHTML = list.length > 1 ? `Sản phẩm này gồm <b>${list.length} nhãn</b>. Bấm "Bỏ" ở mã nào bạn không muốn đặt chung.` : '';
   updateOrderSubmitLabel();
   document.getElementById('orderModalOverlay').classList.add('open');
   setTimeout(()=>{ const q = document.querySelector('#orderRows .order-qty'); if(q) q.focus(); }, 50);
