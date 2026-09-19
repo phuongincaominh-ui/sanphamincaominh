@@ -97,6 +97,8 @@
   .kt-modal-close{ background:none; border:none; font-size:20px; line-height:1; cursor:pointer; color:var(--ink-soft); }
   .kt-modal-body{ padding:18px 20px; display:flex; flex-direction:column; gap:14px; }
   .kt-modal-footer{ display:flex; justify-content:space-between; align-items:center; gap:10px; padding:14px 20px; border-top:1px solid var(--line); }
+  .code-hint{ align-self:flex-start; padding:6px 12px; min-height:34px; font-size:12px; font-weight:700; color:var(--red-dark); background:var(--red-tint); border:1px solid transparent; border-radius:100px; }
+  .code-hint:hover{ border-color:var(--red); }
   .kt-save-status{ font-size:11.5px; color:var(--ink-soft); font-weight:600; min-height:14px; }
 
   .toggle-row{ display:flex; align-items:flex-start; gap:9px; padding:11px 13px; background:var(--surface-alt); border-radius:var(--radius-sm); cursor:pointer; user-select:none; }
@@ -214,6 +216,7 @@
       <div class="field">
         <label>Tên sản phẩm</label>
         <input type="text" id="spMName" placeholder="VD: Hộp bánh kem 20cm">
+        <button type="button" class="code-hint" id="spCodeHint" style="display:none;"></button>
       </div>
       <div class="field">
         <label>Hình ảnh</label>
@@ -405,7 +408,7 @@ function spProductCode(ten){
   const re = /\b([A-Za-z]+)\s*-\s*(\d+)\b/g;
   let m, last = null;
   while((m = re.exec(ten || '')) !== null) last = m;
-  return last ? { prefix: last[1].toUpperCase(), num: parseInt(last[2], 10) } : null;
+  return last ? { prefix: last[1].toUpperCase(), num: parseInt(last[2], 10), width: last[2].length } : null;
 }
 function spCompareByCode(a, b){
   const ca = a._code, cb = b._code;
@@ -416,6 +419,22 @@ function spCompareByCode(a, b){
   if(ca) return -1;  // có mã đứng trước
   if(cb) return 1;
   return 0;          // cả hai không có mã: giữ nguyên thứ tự cũ (mới nhất trước)
+}
+// Gợi ý mã kế tiếp: lấy tiền tố đang dùng nhiều nhất (VD TM), số lớn nhất + 1, giữ số chữ số (001 -> 004)
+function spNextCode(){
+  const stat = {};
+  for(const p of spProducts){
+    const c = p._code;
+    if(!c) continue;
+    const s = stat[c.prefix] || (stat[c.prefix] = { count: 0, max: 0, width: 0 });
+    s.count++;
+    if(c.num > s.max) s.max = c.num;
+    if(c.width > s.width) s.width = c.width;
+  }
+  let best = null;
+  for(const k in stat){ if(best === null || stat[k].count > stat[best].count) best = k; }
+  if(best === null) return null;
+  return best + '-' + String(stat[best].max + 1).padStart(stat[best].width, '0');
 }
 // Tính sẵn 1 lần khi tải/sửa: tên không dấu (để tìm nhanh) và mã (để sắp xếp nhanh)
 function spPrep(p){
@@ -546,6 +565,13 @@ function openProductModal(mode, id){
   document.getElementById('spSaveStatus').textContent = '';
   renderSpImgPreview();
   document.getElementById('spModalOverlay').classList.add('open');
+  const hint = document.getElementById('spCodeHint');
+  const nextCode = mode==='new' ? spNextCode() : null;   // chỉ gợi ý khi thêm mới
+  hint.style.display = nextCode ? 'inline-block' : 'none';
+  if(nextCode){
+    hint.textContent = `Mã tiếp theo: ${nextCode} (chạm để chèn vào tên)`;
+    hint.dataset.code = nextCode;
+  }
   setTimeout(()=> document.getElementById('spMName').focus(), 50);
 }
 function closeProductModal(){
@@ -615,6 +641,20 @@ document.getElementById('spMClearImg').addEventListener('click', (e)=>{
 });
 
 document.getElementById('btnAddProduct').addEventListener('click', ()=> openProductModal('new'));
+document.getElementById('spCodeHint').addEventListener('click', (e)=>{
+  const code = e.currentTarget.dataset.code;
+  const input = document.getElementById('spMName');
+  const cur = input.value.trim();
+  if(!code) return;
+  if(!cur){
+    input.value = ' ' + code;   // để con trỏ ở đầu: gõ tên trước, mã tự nằm sau tên
+    input.focus();
+    input.setSelectionRange(0, 0);
+    return;
+  }
+  if(!cur.toUpperCase().includes(code)) input.value = cur + ' ' + code;
+  input.focus();
+});
 document.getElementById('spModalCloseBtn').addEventListener('click', closeProductModal);
 document.getElementById('spMCancelBtn').addEventListener('click', closeProductModal);
 
@@ -824,7 +864,22 @@ document.getElementById('orderSubmitBtn').addEventListener('click', ()=>{
 });
 
 /* ---- icon giỏ hàng nổi + bảng xem lại đơn hàng ---- */
+/* Giỏ hàng lưu tạm trong phiên duyệt (sessionStorage): tải lại trang vẫn còn, tắt tab thì tự mất */
+const CART_KEY = 'spCart';
+function saveCart(){
+  try{ sessionStorage.setItem(CART_KEY, JSON.stringify(cart)); }catch(e){ /* chế độ riêng tư/đầy bộ nhớ: bỏ qua */ }
+}
+function loadCart(){
+  try{
+    const arr = JSON.parse(sessionStorage.getItem(CART_KEY) || '[]');
+    if(!Array.isArray(arr)) return [];
+    return arr
+      .filter(l => l && typeof l.ten === 'string' && Number.isFinite(l.lineId))
+      .map(l => ({ lineId: l.lineId, productId: l.productId, ten: l.ten, qty: l.qty == null ? '1' : String(l.qty), note: l.note ? String(l.note) : '' }));
+  }catch(e){ return []; }
+}
 function updateCartFab(){
+  saveCart(); // mọi thay đổi giỏ (thêm/sửa/xóa/gửi đơn) đều đi qua hàm này
   const fab = document.getElementById('cartFab');
   if(!cart.length){
     fab.style.display = 'none';
@@ -833,6 +888,10 @@ function updateCartFab(){
   fab.style.display = 'flex';
   document.getElementById('cartFabCount').textContent = cart.length;
 }
+// Khôi phục giỏ khi mở/tải lại trang
+cart = loadCart();
+cartLineSeq = cart.reduce((m, l)=> Math.max(m, l.lineId), 0) + 1;
+updateCartFab();
 function renderCartList(){
   const listEl = document.getElementById('cartList');
   const emptyEl = document.getElementById('cartEmpty');
