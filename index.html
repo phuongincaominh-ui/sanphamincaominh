@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#EEF0F3">
 <title>Quản lý sản phẩm</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{
@@ -166,6 +167,7 @@
   <div id="mainApp" style="display:none;">
     <div class="sp-toolbar">
       <span class="sp-count" id="spCount"></span>
+      <button class="btn-ghost btn-small" id="btnMigrate" style="display:none;"></button>
     </div>
     <div class="sp-grid" id="spGrid"></div>
     <div class="empty" id="spEmpty" style="display:none;">Chưa có sản phẩm nào.</div>
@@ -322,30 +324,78 @@ function showToast(msg){
   setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
-/* ---------- ẢNH: resize + nén trước khi lưu base64 vào Supabase ---------- */
-function resizeImage(file){
+/* ---------- ẢNH: lưu ở Supabase Storage, bảng chỉ giữ đường dẫn ---------- */
+// Mỗi sản phẩm có 2 file: ảnh lớn (xem khi click) và ảnh nhỏ "_t" (hiện trên lưới).
+// Cột hinh_anh vẫn giữ nguyên tên: chứa URL Storage (ảnh mới) hoặc base64 (ảnh cũ chưa chuyển).
+const IMG_BUCKET = 'san-pham';
+const IMG_FULL_MAX = 1000;  // cạnh dài nhất của ảnh lớn (px)
+const IMG_THUMB_MAX = 420;  // cạnh dài nhất của ảnh nhỏ trên lưới (px)
+const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer';
+const IMG_PUBLIC_MARKER = `${SUPABASE_URL}/storage/v1/object/public/${IMG_BUCKET}/`;
+
+function spIsStorageUrl(url){ return typeof url === 'string' && url.startsWith(IMG_PUBLIC_MARKER); }
+function spIsLegacyImage(url){ return typeof url === 'string' && url.startsWith('data:'); }
+function spAddThumbSuffix(s){ return s.replace(/(\.[a-z0-9]+)$/i, '_t$1'); }
+function spThumbUrl(url){ return spIsStorageUrl(url) ? spAddThumbSuffix(url) : url; }
+function spStoragePaths(url){
+  if(!spIsStorageUrl(url)) return [];
+  const full = decodeURIComponent(url.slice(IMG_PUBLIC_MARKER.length));
+  return [full, spAddThumbSuffix(full)];
+}
+
+function blobToImage(blob){
   return new Promise((resolve, reject)=>{
-    const reader = new FileReader();
-    reader.onload = (e)=>{
-      const img = new Image();
-      img.onload = ()=>{
-        const maxW = 640;
-        const scale = Math.min(1, maxW / img.width);
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const webp = canvas.toDataURL('image/webp', 0.75);
-        const out = webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/jpeg', 0.78);
-        resolve(out);
-      };
-      img.onerror = reject;
-      img.src = e.target.result;
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = ()=>{ URL.revokeObjectURL(url); resolve(img); };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('Không đọc được ảnh')); };
+    img.src = url;
   });
+}
+function canvasToBlob(canvas, quality){
+  return new Promise(resolve=>{
+    canvas.toBlob(b=>{
+      if(b && b.type === 'image/webp'){ resolve(b); return; }
+      canvas.toBlob(j=>resolve(j), 'image/jpeg', 0.8); // trình duyệt không nén được webp
+    }, 'image/webp', quality);
+  });
+}
+function scaleImage(img, maxSide, quality){
+  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvasToBlob(canvas, quality);
+}
+async function spMakeVariants(file){
+  const img = await blobToImage(file);
+  const [full, thumb] = await Promise.all([
+    scaleImage(img, IMG_FULL_MAX, 0.8),
+    scaleImage(img, IMG_THUMB_MAX, 0.75)
+  ]);
+  return { full, thumb };
+}
+// Upload 2 file, trả về URL công khai của ảnh lớn
+async function spUploadVariants(v){
+  const base = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const ext = v.full.type === 'image/jpeg' ? 'jpg' : 'webp';
+  const fullPath = `${base}.${ext}`;
+  const thumbPath = `${base}_t.${ext}`;
+  const bucket = sbClient.storage.from(IMG_BUCKET);
+  // Tên file là duy nhất nên cache 1 năm được, lần sau mở web ảnh lấy từ bộ nhớ đệm
+  const opts = (b)=>({ contentType: b.type, cacheControl: '31536000', upsert: false });
+  const r1 = await bucket.upload(fullPath, v.full, opts(v.full));
+  if(r1.error) throw r1.error;
+  const r2 = await bucket.upload(thumbPath, v.thumb, opts(v.thumb));
+  if(r2.error){ await bucket.remove([fullPath]); throw r2.error; }
+  return bucket.getPublicUrl(fullPath).data.publicUrl;
+}
+async function spRemoveImageFiles(url){
+  const paths = spStoragePaths(url);
+  if(!paths.length) return;
+  try{ await sbClient.storage.from(IMG_BUCKET).remove(paths); }
+  catch(e){ console.warn('remove image files:', e); }
 }
 
 /* ---------- SẮP XẾP THEO MÃ SẢN PHẨM (TM-001, TM-002, ...) ---------- */
@@ -357,40 +407,49 @@ function spProductCode(ten){
   while((m = re.exec(ten || '')) !== null) last = m;
   return last ? { prefix: last[1].toUpperCase(), num: parseInt(last[2], 10) } : null;
 }
-function spSortByCode(list){
-  return list.slice().sort((a, b)=>{
-    const ca = spProductCode(a.ten), cb = spProductCode(b.ten);
-    if(ca && cb){
-      if(ca.prefix !== cb.prefix) return ca.prefix < cb.prefix ? -1 : 1;
-      return ca.num - cb.num; // so sánh theo SỐ, nên TM-2 < TM-10 < TM-100
-    }
-    if(ca) return -1;   // có mã đứng trước
-    if(cb) return 1;
-    return 0;           // cả hai không có mã: giữ nguyên thứ tự cũ (mới nhất trước)
-  });
+function spCompareByCode(a, b){
+  const ca = a._code, cb = b._code;
+  if(ca && cb){
+    if(ca.prefix !== cb.prefix) return ca.prefix < cb.prefix ? -1 : 1;
+    return ca.num - cb.num; // so sánh theo SỐ, nên TM-2 < TM-10 < TM-100
+  }
+  if(ca) return -1;  // có mã đứng trước
+  if(cb) return 1;
+  return 0;          // cả hai không có mã: giữ nguyên thứ tự cũ (mới nhất trước)
+}
+// Tính sẵn 1 lần khi tải/sửa: tên không dấu (để tìm nhanh) và mã (để sắp xếp nhanh)
+function spPrep(p){
+  p._q = spNormalizeSearch(p.ten);
+  p._code = spProductCode(p.ten);
+  return p;
 }
 
 /* ---------- LOAD DỮ LIỆU ---------- */
 async function loadAll(){
   try{
-    const {data, error} = await sbClient.from('san_pham').select('id,ten,hinh_anh,ghi_chu,hien_thi_viewer').order('created_at', {ascending:false});
+    const {data, error} = await sbClient.from('san_pham').select(SP_COLS).order('created_at', {ascending:false});
     if(error) throw error;
-    spProducts = spSortByCode(data || []);
+    spProducts = (data || []).map(spPrep);
+    spProducts.sort(spCompareByCode);
   }catch(e){
     spProducts = [];
     console.error('loadAll san_pham:', e);
     showToast('Lỗi tải danh sách sản phẩm. (Bảng san_pham đã được tạo trên Supabase chưa?)');
   }
+  updateMigrateBtn();
 }
 
 /* ---------- RENDER LƯỚI SẢN PHẨM ---------- */
+const ESC_MAP = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+function escapeHtml(s){
+  return (s == null ? '' : String(s)).replace(/[&<>"']/g, c=>ESC_MAP[c]);
+}
 function spFilteredProducts(){
   const q = spNormalizeSearch(spSearchQuery.trim());
   const isAdmin = currentRole === 'editor';
   return spProducts.filter(p=>{
     if(!isAdmin && !p.hien_thi_viewer) return false;
-    if(!q) return true;
-    return spNormalizeSearch(p.ten).includes(q);
+    return !q || p._q.includes(q);
   });
 }
 function renderGrid(){
@@ -399,39 +458,52 @@ function renderGrid(){
   const list = spFilteredProducts();
   document.getElementById('spCount').textContent = list.length ? `${list.length} sản phẩm` : '';
   document.getElementById('spEmpty').style.display = list.length ? 'none' : 'block';
-  grid.innerHTML = '';
-  list.forEach(p=>{
-    const card = document.createElement('div');
-    card.className = 'sp-card';
+  const html = [];
+  for(const p of list){
     const hiddenBadge = (isAdmin && !p.hien_thi_viewer) ? '<div class="sp-hidden-badge">Ẩn với viewer</div>' : '';
-    const imgHtml = p.hinh_anh
-      ? `<img src="${p.hinh_anh}" alt="" loading="lazy" decoding="async">`
-      : `<span class="sp-noimg">Chưa có ảnh</span>`;
+    let imgHtml;
+    if(!p.hinh_anh){
+      imgHtml = `<span class="sp-noimg">Chưa có ảnh</span>`;
+    } else if(spIsStorageUrl(p.hinh_anh)){
+      // lưới dùng ảnh nhỏ; data-full là ảnh lớn để phóng to (và để dự phòng nếu ảnh nhỏ lỗi)
+      imgHtml = `<img src="${spThumbUrl(p.hinh_anh)}" data-full="${p.hinh_anh}" alt="" loading="lazy" decoding="async">`;
+    } else {
+      imgHtml = `<img src="${p.hinh_anh}" alt="" loading="lazy" decoding="async">`; // ảnh cũ base64
+    }
     const noteHtml = p.ghi_chu ? `<div class="sp-card-note">${escapeHtml(p.ghi_chu)}</div>` : '';
-    const actionsHtml = `<div class="sp-card-actions">
-        ${isAdmin ? `<button class="btn-ghost btn-small" data-edit="${p.id}">Sửa</button>` : ''}
-        <button class="btn-stamp btn-small" data-order="${p.id}">Thêm vào đơn hàng</button>
-      </div>`;
-    card.innerHTML = `
+    html.push(`<div class="sp-card">
       ${hiddenBadge}
       <div class="sp-card-img">${imgHtml}</div>
       <div class="sp-card-body">
         <div class="sp-card-name">${escapeHtml(p.ten)}</div>
         ${noteHtml}
-        ${actionsHtml}
-      </div>`;
-    grid.appendChild(card);
-  });
-  grid.querySelectorAll('[data-edit]').forEach(btn=>{
-    btn.addEventListener('click', ()=> openProductModal('edit', btn.getAttribute('data-edit')));
-  });
-  grid.querySelectorAll('[data-order]').forEach(btn=>{
-    btn.addEventListener('click', ()=> openOrderModal(btn.getAttribute('data-order')));
-  });
-  grid.querySelectorAll('.sp-card-img img').forEach(img=>{
-    img.addEventListener('click', ()=> openImgLightbox(img.src));
-  });
+        <div class="sp-card-actions">
+          ${isAdmin ? `<button class="btn-ghost btn-small" data-edit="${p.id}">Sửa</button>` : ''}
+          <button class="btn-stamp btn-small" data-order="${p.id}">Thêm vào đơn hàng</button>
+        </div>
+      </div>
+    </div>`);
+  }
+  grid.innerHTML = html.join('');
 }
+// Chỉ gắn 1 listener cho cả lưới (không gắn lại từng nút mỗi lần render)
+const spGridEl = document.getElementById('spGrid');
+spGridEl.addEventListener('click', (e)=>{
+  const editBtn = e.target.closest('[data-edit]');
+  if(editBtn){ openProductModal('edit', editBtn.getAttribute('data-edit')); return; }
+  const orderBtn = e.target.closest('[data-order]');
+  if(orderBtn){ openOrderModal(orderBtn.getAttribute('data-order')); return; }
+  const img = e.target.closest('.sp-card-img img');
+  if(img) openImgLightbox(img.getAttribute('data-full') || img.src);
+});
+// Ảnh nhỏ lỗi/chưa có thì tự dùng ảnh lớn
+spGridEl.addEventListener('error', (e)=>{
+  const img = e.target;
+  if(!img || img.tagName !== 'IMG') return;
+  const full = img.getAttribute('data-full');
+  if(full && img.src !== full) img.src = full;
+}, true);
+
 function openImgLightbox(src){
   if(!src) return;
   document.getElementById('imgLightboxImg').src = src;
@@ -442,11 +514,6 @@ function closeImgLightbox(){
   document.getElementById('imgLightboxImg').src = '';
 }
 document.getElementById('imgLightboxOverlay').addEventListener('click', closeImgLightbox);
-function escapeHtml(s){
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
-}
 
 let spSearchDebounce = null;
 document.getElementById('spSearch').addEventListener('input', (e)=>{
@@ -459,20 +526,30 @@ document.getElementById('spSearch').addEventListener('input', (e)=>{
 });
 
 /* ---------- MODAL SẢN PHẨM ---------- */
+// spModalCtx: { mode, id, originalImage (URL đang lưu trong DB), currentImage (ảnh đang xem trước),
+//               newVariants ({full,thumb} nếu vừa chọn ảnh mới), objectUrl, removeImage, saving }
 function openProductModal(mode, id){
   const p = mode==='edit' ? spProducts.find(x=>x.id===id) : null;
-  spModalCtx = { mode, id: p ? p.id : null, currentImage: p ? p.hinh_anh : null, removeImage:false };
+  spModalCtx = {
+    mode, id: p ? p.id : null,
+    originalImage: p ? p.hinh_anh : null,
+    currentImage: p ? p.hinh_anh : null,
+    newVariants: null, objectUrl: null, removeImage: false, saving: false
+  };
   document.getElementById('spModalTitle').textContent = mode==='edit' ? 'Sửa sản phẩm' : 'Thêm sản phẩm';
   document.getElementById('spMName').value = p ? p.ten : '';
   document.getElementById('spMNote').value = p ? (p.ghi_chu||'') : '';
   document.getElementById('spMVisible').checked = p ? !!p.hien_thi_viewer : true;
   document.getElementById('spMDeleteBtn').style.display = mode==='edit' ? 'inline-block' : 'none';
+  document.getElementById('spMDeleteBtn').disabled = false;
+  document.getElementById('spMSaveBtn').disabled = false;
   document.getElementById('spSaveStatus').textContent = '';
   renderSpImgPreview();
   document.getElementById('spModalOverlay').classList.add('open');
   setTimeout(()=> document.getElementById('spMName').focus(), 50);
 }
 function closeProductModal(){
+  if(spModalCtx && spModalCtx.objectUrl) URL.revokeObjectURL(spModalCtx.objectUrl);
   document.getElementById('spModalOverlay').classList.remove('open');
   spModalCtx = null;
 }
@@ -487,11 +564,16 @@ function renderSpImgPreview(){
   clearBtn.style.display = show ? 'inline-block' : 'none';
 }
 async function handleSpImageFile(file){
-  if(!file || !file.type.startsWith('image/')) return;
+  const ctx = spModalCtx;
+  if(!ctx || ctx.saving || !file || !file.type.startsWith('image/')) return;
   try{
-    const dataUrl = await resizeImage(file);
-    spModalCtx.currentImage = dataUrl;
-    spModalCtx.removeImage = false;
+    const variants = await spMakeVariants(file);
+    if(spModalCtx !== ctx) return; // popup đã đóng trong lúc xử lý ảnh
+    if(ctx.objectUrl) URL.revokeObjectURL(ctx.objectUrl);
+    ctx.objectUrl = URL.createObjectURL(variants.full);
+    ctx.newVariants = variants;
+    ctx.currentImage = ctx.objectUrl;
+    ctx.removeImage = false;
     renderSpImgPreview();
   }catch(e){
     console.error('resize image:', e);
@@ -525,6 +607,8 @@ document.getElementById('spMImgPreview').addEventListener('click', (e)=>{
 });
 document.getElementById('spMClearImg').addEventListener('click', (e)=>{
   e.stopPropagation();
+  if(!spModalCtx || spModalCtx.saving) return;
+  spModalCtx.newVariants = null;
   spModalCtx.currentImage = null;
   spModalCtx.removeImage = true;
   renderSpImgPreview();
@@ -535,49 +619,131 @@ document.getElementById('spModalCloseBtn').addEventListener('click', closeProduc
 document.getElementById('spMCancelBtn').addEventListener('click', closeProductModal);
 
 document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
-  const ten = document.getElementById('spMName').value.trim();
+  const ctx = spModalCtx;
+  if(!ctx || ctx.saving) return; // đang lưu thì bấm thêm cũng bỏ qua (tránh tạo trùng)
   const statusEl = document.getElementById('spSaveStatus');
+  const saveBtn = document.getElementById('spMSaveBtn');
+  const delBtn = document.getElementById('spMDeleteBtn');
+  const ten = document.getElementById('spMName').value.trim();
   if(!ten){ statusEl.textContent = 'Nhập tên sản phẩm.'; return; }
+
   const payload = {
     ten,
     ghi_chu: document.getElementById('spMNote').value.trim(),
     hien_thi_viewer: document.getElementById('spMVisible').checked,
   };
-  if(spModalCtx.removeImage) payload.hinh_anh = null;
-  else if(spModalCtx.currentImage) payload.hinh_anh = spModalCtx.currentImage;
-  statusEl.textContent = 'Đang lưu...';
+  ctx.saving = true; saveBtn.disabled = true; delBtn.disabled = true;
+  let stage = 'upload';
+  let uploadedUrl = null;
   try{
-    if(spModalCtx.mode==='edit'){
-      const {error} = await sbClient.from('san_pham').update(payload).eq('id', spModalCtx.id);
-      if(error) throw error;
-    } else {
-      const {error} = await sbClient.from('san_pham').insert(payload);
-      if(error) throw error;
+    if(ctx.newVariants){
+      statusEl.textContent = 'Đang tải ảnh lên...';
+      uploadedUrl = await spUploadVariants(ctx.newVariants);
+      payload.hinh_anh = uploadedUrl;
+    } else if(ctx.removeImage && ctx.originalImage){
+      payload.hinh_anh = null;
     }
-    await loadAll();
+    // Không đổi ảnh thì KHÔNG gửi hinh_anh lên server
+
+    stage = 'db';
+    statusEl.textContent = 'Đang lưu...';
+    let row;
+    if(ctx.mode === 'edit'){
+      const {data, error} = await sbClient.from('san_pham').update(payload).eq('id', ctx.id).select(SP_COLS).maybeSingle();
+      if(error) throw error;
+      if(!data) throw new Error('Không cập nhật được sản phẩm (không có quyền hoặc sản phẩm đã bị xóa)');
+      row = spPrep(data);
+      const idx = spProducts.findIndex(x=>x.id === ctx.id);
+      if(idx >= 0) spProducts[idx] = row; else spProducts.unshift(row);
+    } else {
+      const {data, error} = await sbClient.from('san_pham').insert(payload).select(SP_COLS).maybeSingle();
+      if(error) throw error;
+      if(data) spProducts.unshift(spPrep(data));
+      else await loadAll();
+    }
+    spProducts.sort(spCompareByCode);
+
+    // Lưu DB xong mới xóa file ảnh cũ (nếu đã thay/xóa ảnh)
+    if((ctx.newVariants || ctx.removeImage) && ctx.originalImage && ctx.originalImage !== uploadedUrl){
+      await spRemoveImageFiles(ctx.originalImage);
+    }
+    updateMigrateBtn();
     renderGrid();
     closeProductModal();
     showToast('Đã lưu sản phẩm');
   }catch(e){
     console.error('save san_pham:', e);
-    statusEl.textContent = 'Lỗi khi lưu. (Bảng san_pham đã được tạo trên Supabase chưa?)';
+    if(uploadedUrl) await spRemoveImageFiles(uploadedUrl); // dọn ảnh vừa tải lên nếu lưu thất bại
+    statusEl.textContent = stage === 'upload'
+      ? 'Lỗi tải ảnh lên. (Đã tạo bucket "san-pham" và cấp quyền trên Supabase chưa?)'
+      : 'Lỗi khi lưu. (Bảng san_pham đã được tạo trên Supabase chưa?)';
+    ctx.saving = false; saveBtn.disabled = false; delBtn.disabled = false;
   }
 });
 
 document.getElementById('spMDeleteBtn').addEventListener('click', async ()=>{
-  if(!spModalCtx || spModalCtx.mode!=='edit') return;
+  const ctx = spModalCtx;
+  if(!ctx || ctx.mode !== 'edit' || ctx.saving) return;
   if(!confirm('Xóa sản phẩm này?')) return;
+  const saveBtn = document.getElementById('spMSaveBtn');
+  const delBtn = document.getElementById('spMDeleteBtn');
+  ctx.saving = true; saveBtn.disabled = true; delBtn.disabled = true;
   try{
-    const {error} = await sbClient.from('san_pham').delete().eq('id', spModalCtx.id);
+    const {error} = await sbClient.from('san_pham').delete().eq('id', ctx.id);
     if(error) throw error;
-    await loadAll();
+    spProducts = spProducts.filter(x=>x.id !== ctx.id);
+    await spRemoveImageFiles(ctx.originalImage);
+    updateMigrateBtn();
     renderGrid();
     closeProductModal();
     showToast('Đã xóa sản phẩm');
   }catch(e){
     console.error('delete san_pham:', e);
     document.getElementById('spSaveStatus').textContent = 'Lỗi khi xóa.';
+    ctx.saving = false; saveBtn.disabled = false; delBtn.disabled = false;
   }
+});
+
+/* ---------- CHUYỂN ẢNH CŨ (base64) SANG STORAGE — chỉ admin thấy nút này ---------- */
+let spMigrating = false;
+function updateMigrateBtn(){
+  const btn = document.getElementById('btnMigrate');
+  if(!btn || spMigrating) return;
+  const n = spProducts.filter(p=>spIsLegacyImage(p.hinh_anh)).length;
+  btn.style.display = (currentRole === 'editor' && n > 0) ? 'inline-block' : 'none';
+  btn.textContent = `Chuyển ${n} ảnh cũ sang Storage`;
+}
+document.getElementById('btnMigrate').addEventListener('click', async ()=>{
+  if(spMigrating) return;
+  const todo = spProducts.filter(p=>spIsLegacyImage(p.hinh_anh));
+  if(!todo.length) return;
+  if(!confirm(`Chuyển ${todo.length} ảnh cũ sang Supabase Storage?\n\nCần tạo bucket "${IMG_BUCKET}" trước. Nếu bị gián đoạn, bấm lại để chạy tiếp phần còn lại.`)) return;
+  const btn = document.getElementById('btnMigrate');
+  spMigrating = true; btn.disabled = true;
+  let ok = 0, fail = 0;
+  for(let i = 0; i < todo.length; i++){
+    const p = todo[i];
+    btn.textContent = `Đang chuyển ${i + 1}/${todo.length}...`;
+    let url = null;
+    try{
+      const fullBlob = await (await fetch(p.hinh_anh)).blob();      // giữ nguyên ảnh cũ, không nén lại
+      const thumb = await scaleImage(await blobToImage(fullBlob), IMG_THUMB_MAX, 0.75);
+      url = await spUploadVariants({ full: fullBlob, thumb });
+      const {data, error} = await sbClient.from('san_pham').update({ hinh_anh: url }).eq('id', p.id).select('id').maybeSingle();
+      if(error) throw error;
+      if(!data) throw new Error('Không cập nhật được dòng ' + p.id);
+      p.hinh_anh = url;
+      ok++;
+    }catch(e){
+      console.error('migrate image', p.id, e);
+      if(url) await spRemoveImageFiles(url);
+      fail++;
+    }
+  }
+  spMigrating = false; btn.disabled = false;
+  updateMigrateBtn();
+  renderGrid();
+  showToast(fail ? `Đã chuyển ${ok} ảnh, lỗi ${fail} ảnh (xem Console)` : `Đã chuyển ${ok} ảnh sang Storage`);
 });
 
 /* ---------- GIỎ HÀNG + GỬI ĐƠN QUA ZALO ---------- */
@@ -749,6 +915,7 @@ function updateAuthHeader(){
   document.getElementById('currentUserLabel').style.display = isLoggedIn ? 'inline' : 'none';
   document.getElementById('btnLogout').style.display = isLoggedIn ? 'inline-block' : 'none';
   document.getElementById('btnAddProduct').style.display = isAdmin ? 'inline-block' : 'none';
+  updateMigrateBtn();
 }
 async function afterLogin(user){
   currentUser = user;
