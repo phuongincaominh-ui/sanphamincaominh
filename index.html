@@ -844,8 +844,14 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
   const statusEl = document.getElementById('spSaveStatus');
   const saveBtn = document.getElementById('spMSaveBtn');
   const delBtn = document.getElementById('spMDeleteBtn');
-  const ten = document.getElementById('spMName').value.trim();
+  let ten = document.getElementById('spMName').value.trim();
   if(!ten){ statusEl.textContent = 'Nhập tên sản phẩm.'; return; }
+  // Thêm sản phẩm mới mà tên chưa có mã (dạng TM-001) thì tự chèn mã tiếp theo vào cuối tên
+  let autoCode = null;
+  if(ctx.mode === 'new' && !spProductCode(ten)){
+    autoCode = spNextCode();
+    if(autoCode) ten = ten + ' ' + autoCode;
+  }
 
   const payload = {
     ten,
@@ -895,7 +901,7 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     updateMigrateBtn();
     renderGrid();
     closeProductModal();
-    showToast('Đã lưu sản phẩm');
+    showToast(autoCode ? `Đã lưu sản phẩm, tự thêm mã ${autoCode}` : 'Đã lưu sản phẩm');
   }catch(e){
     console.error('save san_pham:', e);
     if(uploadedUrl) await spRemoveImageFiles(uploadedUrl); // dọn ảnh vừa tải lên nếu lưu thất bại
