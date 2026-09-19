@@ -106,6 +106,11 @@
   .sp-group-row-tag{ font-size:10.5px; font-weight:700; color:var(--amber-dark); }
   .sp-group-actions{ display:flex; flex-direction:column; gap:6px; margin-top:auto; padding-top:6px; }
   .sp-group-actions button{ width:100%; padding:8px 6px; font-size:12px; }
+  .sp-cats{ display:flex; gap:8px; overflow-x:auto; margin-bottom:12px; padding-bottom:2px; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .sp-cats::-webkit-scrollbar{ display:none; }
+  .sp-cat{ flex-shrink:0; white-space:nowrap; font:inherit; font-size:13px; font-weight:700; color:var(--ink-soft); background:var(--surface); border:1px solid var(--line); border-radius:100px; padding:8px 14px; cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
+  .sp-cat span{ font-weight:600; opacity:.75; margin-left:4px; }
+  .sp-cat.active{ background:var(--red); border-color:var(--red); color:var(--white); }
   .sp-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; }
   .sp-count{ font-size:12.5px; color:var(--ink-soft); font-weight:600; }
 
@@ -194,6 +199,7 @@
   <div id="loading" class="loading"><div class="spinner"></div>Đang tải dữ liệu...</div>
 
   <div id="mainApp" style="display:none;">
+    <div class="sp-cats" id="spCats"></div>
     <div class="sp-toolbar">
       <span class="sp-count" id="spCount"></span>
       <button class="btn-ghost btn-small" id="btnMigrate" style="display:none;"></button>
@@ -461,7 +467,17 @@ function spNextCode(){
   return best + '-' + String(stat[best].max + 1).padStart(stat[best].width, '0');
 }
 // Tính sẵn 1 lần khi tải/sửa: tên không dấu (để tìm nhanh) và mã (để sắp xếp nhanh)
+// Phân loại tự động theo chữ đầu tiên của tên (không phân biệt hoa/thường/dấu)
+const SP_CATS = ['Tem nhãn', 'Hộp', 'Khác'];
+function spCategoryOf(ten){
+  const first = spNormalizeSearch((ten || '').trim()).split(/\s+/)[0];
+  if(first === 'tem') return 'Tem nhãn';
+  if(first === 'hop') return 'Hộp';
+  return 'Khác';
+}
+let spCategory = 'all';
 function spPrep(p){
+  p._cat = spCategoryOf(p.ten);
   p._q = spNormalizeSearch(p.ten + ' ' + (p.nhom || ''));
   p._code = spProductCode(p.ten);
   p._nhom = spNormalizeSearch((p.nhom || '').trim());   // khóa so sánh nhóm (không phân biệt hoa/thường/dấu)
@@ -488,13 +504,27 @@ const ESC_MAP = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
 function escapeHtml(s){
   return (s == null ? '' : String(s)).replace(/[&<>"']/g, c=>ESC_MAP[c]);
 }
-function spFilteredProducts(){
+function spFilteredProducts(ignoreCategory){
   const q = spNormalizeSearch(spSearchQuery.trim());
   const isAdmin = currentRole === 'editor';
   return spProducts.filter(p=>{
     if(!isAdmin && !p.hien_thi_viewer) return false;
+    if(!ignoreCategory && spCategory !== 'all' && p._cat !== spCategory) return false;
     return !q || p._q.includes(q);
   });
+}
+// Hàng nút phân loại: Tất cả / Tem nhãn / Hộp / Khác (chỉ hiện loại đang có sản phẩm)
+function renderCats(){
+  const el = document.getElementById('spCats');
+  const isAdmin = currentRole === 'editor';
+  const visible = spProducts.filter(p=> isAdmin || p.hien_thi_viewer);
+  const matched = spFilteredProducts(true);
+  const cats = SP_CATS.filter(c=> visible.some(p=>p._cat === c));
+  if(spCategory !== 'all' && !cats.includes(spCategory)) spCategory = 'all';
+  const btn = (key, label, n)=> `<button type="button" class="sp-cat${spCategory === key ? ' active' : ''}" data-cat="${escapeHtml(key)}">${escapeHtml(label)}<span>${n}</span></button>`;
+  el.innerHTML = cats.length > 1
+    ? btn('all', 'Tất cả', matched.length) + cats.map(c=> btn(c, c, matched.filter(p=>p._cat === c).length)).join('')
+    : '';
 }
 function spImgHtml(p){
   if(!p.hinh_anh) return `<span class="sp-noimg">Chưa có ảnh</span>`;
@@ -583,6 +613,7 @@ async function spSetGroupCover(id, btn){
 function renderGrid(){
   const grid = document.getElementById('spGrid');
   const isAdmin = currentRole === 'editor';
+  renderCats();
   const list = spFilteredProducts();
   const searching = spNormalizeSearch(spSearchQuery.trim()) !== '';
   document.getElementById('spCount').textContent = list.length ? `${list.length} sản phẩm` : '';
@@ -651,6 +682,13 @@ function closeImgLightbox(){
   document.getElementById('imgLightboxImg').src = '';
 }
 document.getElementById('imgLightboxOverlay').addEventListener('click', closeImgLightbox);
+
+document.getElementById('spCats').addEventListener('click', (e)=>{
+  const b = e.target.closest('[data-cat]');
+  if(!b) return;
+  spCategory = b.getAttribute('data-cat');
+  renderGrid();
+});
 
 let spSearchDebounce = null;
 document.getElementById('spSearch').addEventListener('input', (e)=>{
