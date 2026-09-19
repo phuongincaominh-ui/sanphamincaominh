@@ -348,12 +348,34 @@ function resizeImage(file){
   });
 }
 
+/* ---------- SẮP XẾP THEO MÃ SẢN PHẨM (TM-001, TM-002, ...) ---------- */
+// Lấy mã nằm ở cuối tên, VD "Hộp bánh kem 20cm TM-001" -> { prefix:'TM', num:1 }
+// Không có mã thì trả về null (sản phẩm đó sẽ nằm cuối danh sách)
+function spProductCode(ten){
+  const re = /\b([A-Za-z]+)\s*-\s*(\d+)\b/g;
+  let m, last = null;
+  while((m = re.exec(ten || '')) !== null) last = m;
+  return last ? { prefix: last[1].toUpperCase(), num: parseInt(last[2], 10) } : null;
+}
+function spSortByCode(list){
+  return list.slice().sort((a, b)=>{
+    const ca = spProductCode(a.ten), cb = spProductCode(b.ten);
+    if(ca && cb){
+      if(ca.prefix !== cb.prefix) return ca.prefix < cb.prefix ? -1 : 1;
+      return ca.num - cb.num; // so sánh theo SỐ, nên TM-2 < TM-10 < TM-100
+    }
+    if(ca) return -1;   // có mã đứng trước
+    if(cb) return 1;
+    return 0;           // cả hai không có mã: giữ nguyên thứ tự cũ (mới nhất trước)
+  });
+}
+
 /* ---------- LOAD DỮ LIỆU ---------- */
 async function loadAll(){
   try{
     const {data, error} = await sbClient.from('san_pham').select('id,ten,hinh_anh,ghi_chu,hien_thi_viewer').order('created_at', {ascending:false});
     if(error) throw error;
-    spProducts = data || [];
+    spProducts = spSortByCode(data || []);
   }catch(e){
     spProducts = [];
     console.error('loadAll san_pham:', e);
