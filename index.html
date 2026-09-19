@@ -121,6 +121,12 @@
   /* ---------- GIỎ HÀNG ---------- */
   .cart-fab{ position:fixed; right:20px; bottom:24px; bottom:calc(24px + env(safe-area-inset-bottom)); z-index:200; display:none; align-items:center; justify-content:center; gap:7px; background:var(--red); color:var(--white); border:none; border-radius:100px; padding:14px 20px; font-size:16px; font-weight:800; box-shadow:0 4px 14px rgba(229,52,43,.4); cursor:pointer; }
   .cart-fab:hover{ background:var(--red-dark); }
+  .order-group-hint{ font-size:12px; color:var(--ink-soft); line-height:1.5; background:var(--red-tint); border-radius:12px; padding:9px 12px; }
+  .order-row{ display:flex; flex-direction:column; gap:10px; padding:12px; border:1px solid var(--line); border-radius:14px; }
+  .order-row-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .order-row-name{ font-weight:700; font-size:14px; line-height:1.4; padding-top:2px; }
+  .order-row-tag{ font-size:11px; font-weight:700; color:var(--red-dark); margin-top:2px; }
+  .order-row .order-qty{ max-width:110px; }
   .cart-line{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; padding:12px 0; border-bottom:1px solid var(--line); }
   .cart-line:last-child{ border-bottom:none; }
   .cart-line-name{ font-weight:700; font-size:13.5px; color:var(--ink); line-height:1.4; }
@@ -219,6 +225,12 @@
         <button type="button" class="code-hint" id="spCodeHint" style="display:none;"></button>
       </div>
       <div class="field">
+        <label>Nhóm đặt chung (không bắt buộc)</label>
+        <input type="text" id="spMNhom" list="spNhomList" placeholder="VD: Nhãn tròn 5cm" autocomplete="off">
+        <datalist id="spNhomList"></datalist>
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">Các sản phẩm ghi cùng tên nhóm sẽ hiện chung trong hộp thoại đặt hàng. Để trống nếu sản phẩm đặt riêng.</div>
+      </div>
+      <div class="field">
         <label>Hình ảnh</label>
         <div class="img-dropzone" id="spImgDropzone" tabindex="0">
           <img id="spMImgPreview" class="img-preview" style="display:none;">
@@ -255,24 +267,14 @@
 
 <!-- MODAL: đặt hàng qua Zalo -->
 <div class="kt-modal-overlay" id="orderModalOverlay">
-  <div class="kt-modal" style="max-width:380px;">
+  <div class="kt-modal" style="max-width:420px;">
     <div class="kt-modal-head">
       <h3 id="orderModalTitle">Thêm vào đơn hàng</h3>
       <button class="kt-modal-close" id="orderModalCloseBtn">&times;</button>
     </div>
     <div class="kt-modal-body">
-      <div class="field">
-        <label>Sản phẩm</label>
-        <div id="orderProductName" style="font-weight:700; font-size:14.5px; padding:4px 0;"></div>
-      </div>
-      <div class="field">
-        <label>Số lượng</label>
-        <input type="number" id="orderQty" min="1" value="1" inputmode="numeric">
-      </div>
-      <div class="field">
-        <label>Ghi chú (không bắt buộc)</label>
-        <textarea id="orderNote" rows="3" placeholder="VD: giao trước thứ 6, cần gấp..."></textarea>
-      </div>
+      <div class="order-group-hint" id="orderGroupHint" style="display:none;"></div>
+      <div id="orderRows" style="display:flex; flex-direction:column; gap:12px;"></div>
     </div>
     <div class="kt-modal-footer">
       <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
@@ -333,7 +335,7 @@ function showToast(msg){
 const IMG_BUCKET = 'san-pham';
 const IMG_FULL_MAX = 1000;  // cạnh dài nhất của ảnh lớn (px)
 const IMG_THUMB_MAX = 420;  // cạnh dài nhất của ảnh nhỏ trên lưới (px)
-const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer';
+const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer,nhom';
 const IMG_PUBLIC_MARKER = `${SUPABASE_URL}/storage/v1/object/public/${IMG_BUCKET}/`;
 
 function spIsStorageUrl(url){ return typeof url === 'string' && url.startsWith(IMG_PUBLIC_MARKER); }
@@ -440,6 +442,7 @@ function spNextCode(){
 function spPrep(p){
   p._q = spNormalizeSearch(p.ten);
   p._code = spProductCode(p.ten);
+  p._nhom = spNormalizeSearch((p.nhom || '').trim());   // khóa so sánh nhóm (không phân biệt hoa/thường/dấu)
   return p;
 }
 
@@ -558,6 +561,11 @@ function openProductModal(mode, id){
   document.getElementById('spModalTitle').textContent = mode==='edit' ? 'Sửa sản phẩm' : 'Thêm sản phẩm';
   document.getElementById('spMName').value = p ? p.ten : '';
   document.getElementById('spMNote').value = p ? (p.ghi_chu||'') : '';
+  document.getElementById('spMNhom').value = p ? (p.nhom||'') : '';
+  // gợi ý các tên nhóm đang có (mỗi nhóm 1 dòng)
+  const nhomSeen = new Map();
+  spProducts.forEach(x=>{ if(x._nhom && !nhomSeen.has(x._nhom)) nhomSeen.set(x._nhom, x.nhom.trim()); });
+  document.getElementById('spNhomList').innerHTML = [...nhomSeen.values()].map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
   document.getElementById('spMVisible').checked = p ? !!p.hien_thi_viewer : true;
   document.getElementById('spMDeleteBtn').style.display = mode==='edit' ? 'inline-block' : 'none';
   document.getElementById('spMDeleteBtn').disabled = false;
@@ -671,6 +679,7 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     ten,
     ghi_chu: document.getElementById('spMNote').value.trim(),
     hien_thi_viewer: document.getElementById('spMVisible').checked,
+    nhom: document.getElementById('spMNhom').value.trim() || null,
   };
   ctx.saving = true; saveBtn.disabled = true; delBtn.disabled = true;
   let stage = 'upload';
@@ -716,7 +725,7 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     if(uploadedUrl) await spRemoveImageFiles(uploadedUrl); // dọn ảnh vừa tải lên nếu lưu thất bại
     statusEl.textContent = stage === 'upload'
       ? 'Lỗi tải ảnh lên. (Đã tạo bucket "san-pham" và cấp quyền trên Supabase chưa?)'
-      : 'Lỗi khi lưu. (Bảng san_pham đã được tạo trên Supabase chưa?)';
+      : 'Lỗi khi lưu. (Bảng san_pham đã có cột "nhom" trên Supabase chưa?)';
     ctx.saving = false; saveBtn.disabled = false; delBtn.disabled = false;
   }
 });
@@ -816,47 +825,98 @@ async function copyToClipboard(text){
 }
 
 /* ---- popup nhập số lượng + ghi chú (thêm mới hoặc sửa 1 dòng đã có) ---- */
+// Mỗi sản phẩm là 1 "row" trong popup. Thêm mới: sản phẩm bấm + các mã cùng nhóm (nếu có).
+function orderRowHtml(pid, ten, qty, note, opts){
+  const tag = opts.tag ? `<div class="order-row-tag">${escapeHtml(opts.tag)}</div>` : '';
+  const del = opts.removable ? `<button type="button" class="btn-danger btn-small" data-row-del>Bỏ</button>` : '';
+  return `<div class="order-row" data-pid="${escapeHtml(String(pid))}">
+    <div class="order-row-head">
+      <div><div class="order-row-name">${escapeHtml(ten)}</div>${tag}</div>
+      ${del}
+    </div>
+    <div class="field">
+      <label>Số lượng</label>
+      <input type="number" class="order-qty" min="1" value="${escapeHtml(String(qty))}" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label>Ghi chú (không bắt buộc)</label>
+      <textarea class="order-note" rows="2" placeholder="VD: giao trước thứ 6, cần gấp...">${escapeHtml(note || '')}</textarea>
+    </div>
+  </div>`;
+}
+function updateOrderSubmitLabel(){
+  if(!orderCtx || orderCtx.mode === 'edit') return;
+  const n = document.querySelectorAll('#orderRows .order-row').length;
+  document.getElementById('orderSubmitBtn').textContent = n > 1 ? `Thêm ${n} sản phẩm` : 'Thêm';
+}
+function spGroupMates(p){
+  if(!p._nhom) return [];
+  const isAdmin = currentRole === 'editor';
+  return spProducts.filter(x=> x.id !== p.id && x._nhom === p._nhom && (isAdmin || x.hien_thi_viewer));
+}
 function openOrderModal(id){
   const p = spProducts.find(x=>x.id===id);
   if(!p) return;
   orderCtx = { mode:'add', productId: p.id, ten: p.ten, lineId: null };
+  const mates = spGroupMates(p);
+  const rows = [orderRowHtml(p.id, p.ten, 1, '', { removable:false })];
+  mates.forEach(m=> rows.push(orderRowHtml(m.id, m.ten, 1, '', { removable:true, tag:'Đặt kèm' })));
   document.getElementById('orderModalTitle').textContent = 'Thêm vào đơn hàng';
-  document.getElementById('orderProductName').textContent = p.ten;
-  document.getElementById('orderQty').value = 1;
-  document.getElementById('orderNote').value = '';
-  document.getElementById('orderSubmitBtn').textContent = 'Thêm';
+  document.getElementById('orderRows').innerHTML = rows.join('');
+  const hint = document.getElementById('orderGroupHint');
+  hint.style.display = mates.length ? 'block' : 'none';
+  hint.textContent = mates.length ? 'Sản phẩm này có các mã đặt kèm. Bấm "Bỏ" ở mã nào bạn không muốn đặt chung.' : '';
+  updateOrderSubmitLabel();
   document.getElementById('orderModalOverlay').classList.add('open');
-  setTimeout(()=> document.getElementById('orderQty').focus(), 50);
+  setTimeout(()=>{ const q = document.querySelector('#orderRows .order-qty'); if(q) q.focus(); }, 50);
 }
 function openEditCartLine(lineId){
   const line = cart.find(l=>l.lineId===lineId);
   if(!line) return;
   orderCtx = { mode:'edit', productId: line.productId, ten: line.ten, lineId: line.lineId };
   document.getElementById('orderModalTitle').textContent = 'Sửa sản phẩm trong đơn';
-  document.getElementById('orderProductName').textContent = line.ten;
-  document.getElementById('orderQty').value = line.qty;
-  document.getElementById('orderNote').value = line.note || '';
+  document.getElementById('orderRows').innerHTML = orderRowHtml(line.productId, line.ten, line.qty, line.note, { removable:false });
+  document.getElementById('orderGroupHint').style.display = 'none';
   document.getElementById('orderSubmitBtn').textContent = 'Cập nhật';
   document.getElementById('orderModalOverlay').classList.add('open');
-  setTimeout(()=> document.getElementById('orderQty').focus(), 50);
+  setTimeout(()=>{ const q = document.querySelector('#orderRows .order-qty'); if(q) q.focus(); }, 50);
 }
 function closeOrderModal(){
   document.getElementById('orderModalOverlay').classList.remove('open');
   orderCtx = null;
 }
+document.getElementById('orderRows').addEventListener('click', (e)=>{
+  const del = e.target.closest('[data-row-del]');
+  if(!del) return;
+  del.closest('.order-row').remove();
+  updateOrderSubmitLabel();
+});
 document.getElementById('orderModalCloseBtn').addEventListener('click', closeOrderModal);
 document.getElementById('orderCancelBtn').addEventListener('click', closeOrderModal);
 document.getElementById('orderSubmitBtn').addEventListener('click', ()=>{
   if(!orderCtx) return;
-  const qty = (document.getElementById('orderQty').value || '1').trim();
-  const note = document.getElementById('orderNote').value.trim();
+  const rows = [...document.querySelectorAll('#orderRows .order-row')];
+  if(!rows.length) return;
+  const readRow = (r)=>({
+    pid: r.getAttribute('data-pid'),
+    qty: (r.querySelector('.order-qty').value || '1').trim(),
+    note: r.querySelector('.order-note').value.trim()
+  });
   if(orderCtx.mode === 'edit'){
+    const { qty, note } = readRow(rows[0]);
     const line = cart.find(l=>l.lineId===orderCtx.lineId);
     if(line){ line.qty = qty; line.note = note; }
     showToast('Đã cập nhật sản phẩm trong đơn hàng');
   } else {
-    cart.push({ lineId: cartLineSeq++, productId: orderCtx.productId, ten: orderCtx.ten, qty, note });
-    showToast('Đã thêm vào đơn hàng');
+    let added = 0;
+    rows.forEach(r=>{
+      const { pid, qty, note } = readRow(r);
+      const prod = spProducts.find(x=> String(x.id) === pid);
+      if(!prod) return;
+      cart.push({ lineId: cartLineSeq++, productId: prod.id, ten: prod.ten, qty, note });
+      added++;
+    });
+    showToast(added > 1 ? `Đã thêm ${added} sản phẩm vào đơn hàng` : 'Đã thêm vào đơn hàng');
   }
   updateCartFab();
   renderCartList();
