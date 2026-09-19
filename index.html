@@ -76,7 +76,7 @@
   .sp-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:14px; }
   .sp-card{ background:var(--surface); border-radius:16px; box-shadow:var(--shadow-sm); overflow:hidden; display:flex; flex-direction:column; position:relative; content-visibility:auto; contain-intrinsic-size:0 260px; }
   .sp-card-img{ width:100%; aspect-ratio:1/1; background:var(--surface-alt); display:flex; align-items:center; justify-content:center; overflow:hidden; }
-  .sp-card-img img{ width:100%; height:100%; object-fit:cover; -webkit-touch-callout:none; }
+  .sp-card-img img{ width:100%; height:100%; object-fit:contain; -webkit-touch-callout:none; }
   .sp-card-img .sp-noimg{ color:var(--ink-faint); font-size:12px; }
   .sp-card-body{ padding:12px 13px 14px; display:flex; flex-direction:column; gap:6px; flex:1; }
   .sp-card-name{ font-weight:700; font-size:14px; color:var(--ink); line-height:1.35; }
@@ -217,7 +217,7 @@
         <label>Hình ảnh</label>
         <div class="img-dropzone" id="spImgDropzone" tabindex="0">
           <img id="spMImgPreview" class="img-preview" style="display:none;">
-          <div class="img-dropzone-hint" id="spImgDropzoneHint">Kéo thả ảnh vào đây, dán bằng <b>Ctrl+V</b>, hoặc bấm để chọn tệp</div>
+          <div class="img-dropzone-hint" id="spImgDropzoneHint">Bấm <b>Ctrl+V</b> để dán ảnh, kéo thả vào đây, hoặc bấm để chọn tệp</div>
           <input type="file" id="spMImgFile" accept="image/*" style="display:none;">
         </div>
         <button class="btn-ghost btn-small" id="spMClearImg" type="button" style="display:none; margin-top:8px;">Xóa ảnh</button>
@@ -509,9 +509,15 @@ spDropzone.addEventListener('drop', e=>{
   e.preventDefault(); spDropzone.classList.remove('dragover');
   if(e.dataTransfer.files[0]) handleSpImageFile(e.dataTransfer.files[0]);
 });
-spDropzone.addEventListener('paste', e=>{
-  const item = Array.from(e.clipboardData.items||[]).find(i=>i.type.startsWith('image/'));
-  if(item) handleSpImageFile(item.getAsFile());
+// Ctrl+V dán ảnh ngay khi popup thêm/sửa sản phẩm đang mở, không cần bấm vào ô ảnh.
+// Nếu clipboard là chữ (không có ảnh) thì bỏ qua, ô nhập tên/ghi chú vẫn dán chữ bình thường.
+document.addEventListener('paste', e=>{
+  if(!spModalCtx) return;
+  const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
+  const item = items.find(i=>i.type.startsWith('image/'));
+  if(!item) return;
+  e.preventDefault();
+  handleSpImageFile(item.getAsFile());
 });
 document.getElementById('spMImgPreview').addEventListener('click', (e)=>{
   e.stopPropagation();
