@@ -228,6 +228,7 @@
         <label>Nhóm đặt chung (không bắt buộc)</label>
         <input type="text" id="spMNhom" list="spNhomList" placeholder="VD: Nhãn tròn 5cm" autocomplete="off">
         <datalist id="spNhomList"></datalist>
+        <button type="button" class="code-hint" id="spNhomHint" style="display:none;"></button>
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">Các sản phẩm ghi cùng tên nhóm sẽ hiện chung trong hộp thoại đặt hàng. Để trống nếu sản phẩm đặt riêng.</div>
       </div>
       <div class="field">
@@ -565,6 +566,20 @@ function openProductModal(mode, id){
   // gợi ý các tên nhóm đang có (mỗi nhóm 1 dòng)
   const nhomSeen = new Map();
   spProducts.forEach(x=>{ if(x._nhom && !nhomSeen.has(x._nhom)) nhomSeen.set(x._nhom, x.nhom.trim()); });
+  // Gợi ý nhóm (giống gợi ý mã): lấy nhóm của sản phẩm có mã lớn nhất đang có nhóm — thường là nhóm đang làm dở
+  const nhomHint = document.getElementById('spNhomHint');
+  let nhomSuggest = null;
+  if(!p || !(p.nhom||'').trim()){
+    for(let i = spProducts.length - 1; i >= 0; i--){
+      const x = spProducts[i];
+      if(x._code && x._nhom){ nhomSuggest = x.nhom.trim(); break; }
+    }
+  }
+  nhomHint.style.display = nhomSuggest ? 'inline-block' : 'none';
+  if(nhomSuggest){
+    nhomHint.textContent = `Nhóm gần nhất: ${nhomSuggest} (chạm để chèn)`;
+    nhomHint.dataset.nhom = nhomSuggest;
+  }
   document.getElementById('spNhomList').innerHTML = [...nhomSeen.values()].map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
   document.getElementById('spMVisible').checked = p ? !!p.hien_thi_viewer : true;
   document.getElementById('spMDeleteBtn').style.display = mode==='edit' ? 'inline-block' : 'none';
@@ -661,6 +676,11 @@ document.getElementById('spCodeHint').addEventListener('click', (e)=>{
     return;
   }
   if(!cur.toUpperCase().includes(code)) input.value = cur + ' ' + code;
+  input.focus();
+});
+document.getElementById('spNhomHint').addEventListener('click', ()=>{
+  const input = document.getElementById('spMNhom');
+  input.value = document.getElementById('spNhomHint').dataset.nhom || '';
   input.focus();
 });
 document.getElementById('spModalCloseBtn').addEventListener('click', closeProductModal);
