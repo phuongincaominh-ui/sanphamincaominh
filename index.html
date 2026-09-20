@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#EEF0F3">
 <title>Quản lý sản phẩm</title>
+<link rel="preconnect" href="https://wseviiqkfqxzzvunwmus.supabase.co" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -130,6 +131,20 @@
   .toggle-row input{ width:auto; margin:2px 0 0; accent-color:var(--red); flex-shrink:0; }
   .toggle-row-text{ font-size:12.5px; font-weight:600; color:var(--ink); line-height:1.5; }
 
+  /* ---------- KHÁCH HÀNG: tên khách, màn nhập mã, thanh chọn khách (admin) ---------- */
+  .header-title{ min-width:0; }
+  .khach-name{ margin-top:3px; font-size:12.5px; font-weight:600; color:var(--ink-soft); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gate{ max-width:380px; margin:8vh auto 0; display:flex; flex-direction:column; gap:14px; }
+  .gate h2{ margin:0; font-size:18px; }
+  .gate input{ font-family:'Inter', sans-serif; letter-spacing:.08em; text-transform:uppercase; }
+  .gate input::placeholder{ text-transform:none; letter-spacing:0; }
+  .gate-hint{ font-size:12px; color:var(--ink-soft); line-height:1.5; text-align:center; }
+  .khach-bar{ display:none; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px; margin-bottom:12px; }
+  .khach-bar label{ font-size:12px; font-weight:700; color:var(--ink-soft); }
+  .khach-bar select{ flex:1; min-width:150px; width:auto; }
+  .khach-link-row{ display:flex; gap:8px; }
+  .khach-link-row input{ flex:1; min-width:0; font-size:13px; font-weight:500; color:var(--ink-soft); }
+
   .img-dropzone{ display:flex; align-items:center; justify-content:center; gap:10px; min-height:140px; padding:12px; border:1.5px dashed var(--line-strong); border-radius:var(--radius-sm); background:var(--surface-alt); cursor:pointer; transition:border-color .15s, background .15s; text-align:center; position:relative; overflow:hidden; }
   .img-dropzone:hover, .img-dropzone:focus{ border-color:var(--red); background:var(--red-tint); outline:none; }
   .img-dropzone.dragover{ border-color:var(--red); background:var(--red-tint); }
@@ -165,6 +180,28 @@
   .img-lightbox-overlay.open{ display:flex; }
   .img-lightbox-overlay img{ max-width:100%; max-height:100%; border-radius:12px; cursor:zoom-out; box-shadow:0 10px 40px rgba(0,0,0,.5); -webkit-touch-callout:none; }
 
+  /* ---------- THẺ SẢN PHẨM ĐỀU NHAU (mọi kích thước màn hình) ----------
+     Mỗi phần có chiều cao cố định: ảnh (vuông) → tên (2 dòng) → ô ghi chú / nút "Xem N mã" → nút đặt hàng.
+     Nhờ vậy thẻ nào cũng cao bằng nhau, tên/ghi chú dài ngắn không làm lệch. */
+  .sp-grid{ --sp-btn-h:40px; }
+  .sp-card{ contain-intrinsic-size:0 400px; }
+  .sp-card-name{ height:2.7em; overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+  .sp-card-note{ height:3em; margin-bottom:calc(var(--sp-btn-h) - 3em); overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+  .sp-card-note:empty{ display:block; }            /* thẻ không có ghi chú vẫn giữ chỗ trống */
+  /* bấm vào tên/ghi chú để đọc đầy đủ (chỉ thẻ đó dài ra, thẻ bên cạnh giữ nguyên) */
+  .sp-card-name, .sp-card-note{ cursor:pointer; }
+  .sp-card.text-open .sp-card-name{ height:auto; display:block; overflow:visible; }
+  .sp-card.text-open .sp-card-note{ height:auto; min-height:var(--sp-btn-h); margin-bottom:0; display:block; overflow:visible; }
+
+  .sp-card-actions button, .sp-group-actions button{ height:var(--sp-btn-h); min-height:var(--sp-btn-h); padding:0 8px; line-height:1.2; display:flex; align-items:center; justify-content:center; text-align:center; }
+  .sp-card-actions button[data-edit]{ flex:0 0 auto; padding:0 14px; }
+
+  /* thẻ bộ: nút "Xem N mã" nằm đúng vị trí ô ghi chú, nút đặt hàng xuống cuối → cùng kích thước thẻ thường */
+  .sp-group-actions{ display:contents; }
+  .sp-group-actions [data-toggle-group]{ order:1; }
+  .sp-group-list{ order:2; }
+  .sp-group-actions [data-order-group]{ order:3; margin-top:6px; }
+
   @media (max-width:520px){
     .app{ padding:16px 14px 60px; }
     .header .tagline{ font-size:18px; }
@@ -172,23 +209,32 @@
     /* input/textarea >=16px để iOS Safari không tự zoom khi bấm vào ô nhập */
     input, textarea, select{ font-size:16px; }
     button{ min-height:44px; }
-    .sp-card-actions button{ min-height:38px; }
     .btn-small{ min-height:38px; }
+
+    .sp-grid{ --sp-btn-h:44px; }
+    .khach-bar label{ display:none; }
+    .khach-bar select{ flex:1 1 100%; }
+    .khach-bar .btn-small{ flex:1; }
+    .sp-card{ contain-intrinsic-size:0 346px; }
   }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="header">
-    <div class="tagline">Quản lý sản phẩm</div>
+    <div class="header-title">
+      <div class="tagline">Quản lý sản phẩm</div>
+      <div class="khach-name" id="khachName" style="display:none;"></div>
+    </div>
     <div class="user-bar" id="userBar">
+      <button class="btn-ghost btn-small" id="btnSwitchKhach" style="display:none;">Đổi mã</button>
       <button class="btn-ghost btn-small" id="btnShowLogin">Đăng nhập</button>
       <span id="currentUserLabel" style="display:none;"></span>
       <button class="btn-ghost btn-small" id="btnLogout" style="display:none;">Đăng xuất</button>
     </div>
   </div>
 
-  <div class="card search-card">
+  <div class="card search-card" id="spSearchCard" style="display:none;">
     <div class="search-input">
       <span class="search-icon" aria-hidden="true">⌕</span>
       <input type="text" id="spSearch" placeholder="Tìm sản phẩm... (không cần gõ dấu)">
@@ -196,15 +242,36 @@
     <button class="btn-stamp" id="btnAddProduct" style="display:none; white-space:nowrap;">+ Thêm sản phẩm</button>
   </div>
 
+  <!-- MÀN NHẬP MÃ KHÁCH -->
+  <div class="card gate" id="gate" style="display:none;">
+    <h2>Nhập mã khách</h2>
+    <div class="field">
+      <label for="gateCode">Mã khách</label>
+      <input type="text" id="gateCode" placeholder="VD: K7M2P9X4QA" maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    </div>
+    <div class="login-error" id="gateError" style="display:none;"></div>
+    <button class="btn-stamp" id="gateBtn" style="width:100%;">Vào xem sản phẩm</button>
+    <div class="gate-hint">Mã do bên bán hàng gửi cho bạn. Lần sau máy sẽ tự nhớ, không cần nhập lại.</div>
+  </div>
+
   <div id="loading" class="loading"><div class="spinner"></div>Đang tải dữ liệu...</div>
 
   <div id="mainApp" style="display:none;">
+    <!-- Chỉ admin thấy: chọn khách đang quản lý -->
+    <div class="card khach-bar" id="khachBar">
+      <label for="khachSelect">Khách</label>
+      <select id="khachSelect"></select>
+      <button class="btn-ghost btn-small" id="btnKhachLink" type="button">Sao chép link</button>
+      <button class="btn-ghost btn-small" id="btnKhachEdit" type="button">Sửa khách</button>
+      <button class="btn-stamp btn-small" id="btnKhachNew" type="button">+ Khách mới</button>
+    </div>
     <div class="sp-cats" id="spCats"></div>
     <div class="sp-toolbar">
       <span class="sp-count" id="spCount"></span>
       <button class="btn-ghost btn-small" id="btnMigrate" style="display:none;"></button>
     </div>
     <div class="sp-grid" id="spGrid"></div>
+    <div id="spSentinel" style="height:1px;"></div>
     <div class="empty" id="spEmpty" style="display:none;">Chưa có sản phẩm nào.</div>
   </div>
 </div>
@@ -248,12 +315,12 @@
     <div class="kt-modal-body">
       <div class="field">
         <label>Tên sản phẩm</label>
-        <input type="text" id="spMName" placeholder="VD: Hộp bánh kem 20cm">
+        <input type="text" id="spMName" maxlength="150" placeholder="VD: Hộp bánh kem 20cm">
         <button type="button" class="code-hint" id="spCodeHint" style="display:none;"></button>
       </div>
       <div class="field">
         <label>Nhóm đặt chung (không bắt buộc)</label>
-        <input type="text" id="spMNhom" list="spNhomList" placeholder="VD: Nhãn tròn 5cm" autocomplete="off">
+        <input type="text" id="spMNhom" list="spNhomList" maxlength="100" placeholder="VD: Nhãn tròn 5cm" autocomplete="off">
         <datalist id="spNhomList"></datalist>
         <button type="button" class="code-hint" id="spNhomHint" style="display:none;"></button>
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">Các sản phẩm ghi cùng tên nhóm sẽ hiện chung trong hộp thoại đặt hàng. Để trống nếu sản phẩm đặt riêng.</div>
@@ -269,7 +336,7 @@
       </div>
       <div class="field">
         <label>Ghi chú</label>
-        <textarea id="spMNote" rows="3" placeholder="Ghi chú về sản phẩm này..."></textarea>
+        <textarea id="spMNote" rows="3" maxlength="500" placeholder="Ghi chú về sản phẩm này..."></textarea>
       </div>
       <label class="toggle-row" for="spMVisible">
         <input type="checkbox" id="spMVisible" checked>
@@ -282,6 +349,49 @@
         <span class="kt-save-status" id="spSaveStatus"></span>
         <button class="btn-ghost" id="spMCancelBtn">Hủy</button>
         <button class="btn-stamp" id="spMSaveBtn">Lưu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: thêm/sửa khách -->
+<div class="kt-modal-overlay" id="khachModalOverlay">
+  <div class="kt-modal">
+    <div class="kt-modal-head">
+      <h3 id="khachModalTitle">Thêm khách</h3>
+      <button class="kt-modal-close" id="khachModalCloseBtn">&times;</button>
+    </div>
+    <div class="kt-modal-body">
+      <div class="field">
+        <label>Tên khách</label>
+        <input type="text" id="khachMName" maxlength="100" placeholder="VD: Công ty ABC">
+      </div>
+      <div class="field">
+        <label>Mã khách (khách nhập mã này để xem sản phẩm)</label>
+        <div class="khach-link-row">
+          <input type="text" id="khachMCode" maxlength="24" autocomplete="off" spellcheck="false" style="text-transform:uppercase; letter-spacing:.06em;">
+          <button class="btn-ghost btn-small" id="khachMGenBtn" type="button">Tạo mã mới</button>
+        </div>
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">8–24 ký tự chữ hoặc số. Đổi mã thì mã và link cũ của khách này hết dùng được.</div>
+      </div>
+      <div class="field">
+        <label>Link gửi khách (bấm vào là vào thẳng, không cần nhập mã)</label>
+        <div class="khach-link-row">
+          <input type="text" id="khachMLink" readonly>
+          <button class="btn-ghost btn-small" id="khachMCopyBtn" type="button">Sao chép</button>
+        </div>
+      </div>
+      <label class="toggle-row" for="khachMActive">
+        <input type="checkbox" id="khachMActive" checked>
+        <span class="toggle-row-text">Cho phép khách này truy cập (bỏ tick để khóa tạm, mã không dùng được nữa)</span>
+      </label>
+    </div>
+    <div class="kt-modal-footer">
+      <button class="btn-danger" id="khachMDeleteBtn" style="display:none;">Xóa khách này</button>
+      <div style="margin-left:auto; display:flex; align-items:center; gap:10px;">
+        <span class="kt-save-status" id="khachSaveStatus"></span>
+        <button class="btn-ghost" id="khachMCancelBtn">Hủy</button>
+        <button class="btn-stamp" id="khachMSaveBtn">Lưu</button>
       </div>
     </div>
   </div>
@@ -341,6 +451,14 @@ const sbClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentUser = null;
 let currentRole = null;
+let currentKhach = null;   // khách đang xem: { id, ten, ma?, hoat_dong? }
+let khachList = [];        // (admin) danh sách khách
+let khachLoadSeq = 0;      // chống kết quả cũ ghi đè khi chuyển khách nhanh
+const KHACH_CODE_KEY  = 'spKhachMa';     // localStorage: mã khách máy này đã nhập
+const ADMIN_KHACH_KEY = 'spAdminKhach';  // localStorage: khách admin chọn lần trước
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){ /* chế độ riêng tư: bỏ qua */ } }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
 let spProducts = []; // { id, ten, hinh_anh, ghi_chu, hien_thi_viewer }
 let spSearchQuery = '';
 let spModalCtx = null; // { mode:'new'|'edit', id?, currentImage, removeImage }
@@ -363,6 +481,10 @@ function showToast(msg){
 const IMG_BUCKET = 'san-pham';
 const IMG_FULL_MAX = 1000;  // cạnh dài nhất của ảnh lớn (px)
 const IMG_THUMB_MAX = 420;  // cạnh dài nhất của ảnh nhỏ trên lưới (px)
+// Trần dung lượng mỗi file: nén giảm dần chất lượng cho tới khi lọt trần → ảnh phức tạp cũng không phình to
+const IMG_FULL_BYTES  = 150 * 1024;
+const IMG_THUMB_BYTES = 30 * 1024;
+const IMG_INPUT_MAX_BYTES = 20 * 1024 * 1024; // từ chối ảnh gốc quá lớn (dễ treo trình duyệt khi giải mã)
 const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer,nhom,nhom_dai_dien';
 const IMG_PUBLIC_MARKER = `${SUPABASE_URL}/storage/v1/object/public/${IMG_BUCKET}/`;
 
@@ -389,24 +511,40 @@ function canvasToBlob(canvas, quality){
   return new Promise(resolve=>{
     canvas.toBlob(b=>{
       if(b && b.type === 'image/webp'){ resolve(b); return; }
-      canvas.toBlob(j=>resolve(j), 'image/jpeg', 0.8); // trình duyệt không nén được webp
+      canvas.toBlob(j=>resolve(j), 'image/jpeg', quality); // trình duyệt không nén được webp
     }, 'image/webp', quality);
   });
 }
-function scaleImage(img, maxSide, quality){
-  const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+// Nén lần lượt các mức chất lượng, dừng ở mức đầu tiên lọt trần dung lượng (không lọt thì lấy bản nhỏ nhất)
+async function canvasToBlobBudget(canvas, qualities, maxBytes){
+  let best = null;
+  for(const q of qualities){
+    const b = await canvasToBlob(canvas, q);
+    if(!b) continue;
+    if(!best || b.size < best.size) best = b;
+    if(b.size <= maxBytes) return b;
+  }
+  return best;
+}
+function scaleToCanvas(src, srcW, srcH, maxSide){
+  const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(img.width * scale));
-  canvas.height = Math.max(1, Math.round(img.height * scale));
-  canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-  return canvasToBlob(canvas, quality);
+  canvas.width = Math.max(1, Math.round(srcW * scale));
+  canvas.height = Math.max(1, Math.round(srcH * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+  return canvas;
 }
 async function spMakeVariants(file){
-  const img = await blobToImage(file);
-  const [full, thumb] = await Promise.all([
-    scaleImage(img, IMG_FULL_MAX, 0.8),
-    scaleImage(img, IMG_THUMB_MAX, 0.75)
-  ]);
+  const img = await blobToImage(file);   // giải mã ảnh gốc đúng 1 lần
+  const fullCanvas = scaleToCanvas(img, img.width, img.height, IMG_FULL_MAX);
+  const thumbCanvas = scaleToCanvas(fullCanvas, fullCanvas.width, fullCanvas.height, IMG_THUMB_MAX); // thu nhỏ từ bản đã nhỏ: nhanh, đỡ tốn RAM
+  let full = await canvasToBlobBudget(fullCanvas, [0.8, 0.7, 0.6, 0.5], IMG_FULL_BYTES);
+  const thumb = await canvasToBlobBudget(thumbCanvas, [0.75, 0.65, 0.55, 0.45], IMG_THUMB_BYTES);
+  // Ảnh gốc vốn đã nhỏ gọn (jpeg/webp, đúng cỡ) mà nén lại còn to hơn → giữ ảnh gốc, khỏi phình
+  const fits = img.width <= IMG_FULL_MAX && img.height <= IMG_FULL_MAX;
+  if(fits && (file.type === 'image/jpeg' || file.type === 'image/webp') && full && file.size <= full.size) full = file;
   return { full, thumb };
 }
 // Upload 2 file, trả về URL công khai của ảnh lớn
@@ -418,10 +556,15 @@ async function spUploadVariants(v){
   const bucket = sbClient.storage.from(IMG_BUCKET);
   // Tên file là duy nhất nên cache 1 năm được, lần sau mở web ảnh lấy từ bộ nhớ đệm
   const opts = (b)=>({ contentType: b.type, cacheControl: '31536000', upsert: false });
-  const r1 = await bucket.upload(fullPath, v.full, opts(v.full));
-  if(r1.error) throw r1.error;
-  const r2 = await bucket.upload(thumbPath, v.thumb, opts(v.thumb));
-  if(r2.error){ await bucket.remove([fullPath]); throw r2.error; }
+  // tải 2 file cùng lúc; nếu 1 trong 2 lỗi thì dọn cả hai để không để lại file mồ côi
+  const [r1, r2] = await Promise.all([
+    bucket.upload(fullPath, v.full, opts(v.full)),
+    bucket.upload(thumbPath, v.thumb, opts(v.thumb))
+  ]);
+  if(r1.error || r2.error){
+    try{ await bucket.remove([fullPath, thumbPath]); }catch(e){ /* bỏ qua */ }
+    throw (r1.error || r2.error);
+  }
   return bucket.getPublicUrl(fullPath).data.publicUrl;
 }
 async function spRemoveImageFiles(url){
@@ -485,10 +628,14 @@ function spPrep(p){
 }
 
 /* ---------- LOAD DỮ LIỆU ---------- */
+// Admin: đọc sản phẩm của khách đang chọn. (Khách xem thì dữ liệu đến từ hàm khach_lay_du_lieu, không đi qua đây.)
 async function loadAll(){
+  if(!currentKhach){ spProducts = []; updateMigrateBtn(); return; }
+  const kid = currentKhach.id;
   try{
-    const {data, error} = await sbClient.from('san_pham').select(SP_COLS).order('created_at', {ascending:false});
+    const {data, error} = await sbClient.from('san_pham').select(SP_COLS).eq('khach_id', kid).order('created_at', {ascending:false});
     if(error) throw error;
+    if(!currentKhach || currentKhach.id !== kid) return;   // đã chuyển sang khách khác trong lúc chờ
     spProducts = (data || []).map(spPrep);
     spProducts.sort(spCompareByCode);
   }catch(e){
@@ -536,7 +683,7 @@ function spImgHtml(p){
 }
 function spCardHtml(p, isAdmin){
   const hiddenBadge = (isAdmin && !p.hien_thi_viewer) ? '<div class="sp-hidden-badge">Ẩn với viewer</div>' : '';
-  const noteHtml = p.ghi_chu ? `<div class="sp-card-note">${escapeHtml(p.ghi_chu)}</div>` : '';
+  const noteHtml = `<div class="sp-card-note">${p.ghi_chu ? escapeHtml(p.ghi_chu) : ''}</div>`;
   return `<div class="sp-card">
       ${hiddenBadge}
       <div class="sp-card-img">${spImgHtml(p)}</div>
@@ -610,7 +757,32 @@ async function spSetGroupCover(id, btn){
     showToast('Lỗi. (Bảng san_pham đã có cột "nhom_dai_dien" trên Supabase chưa?)');
   }
 }
-function renderGrid(){
+/* Dựng lưới theo lô: chỉ đưa SP_PAGE thẻ đầu vào trang, cuộn gần tới cuối mới dựng tiếp.
+   Danh sách sản phẩm tăng lên nhiều cũng không làm trang nặng (ít thẻ, ít ảnh phải xử lý). */
+const SP_PAGE = 60;
+let spHtmlList = [];   // HTML các thẻ của kết quả hiện tại (chưa đưa hết vào DOM)
+let spShown = 0;       // số thẻ đã đưa vào DOM
+let spObserver = null;
+function spAppendMore(){
+  if(spShown >= spHtmlList.length) return;
+  const next = Math.min(spHtmlList.length, spShown + SP_PAGE);
+  document.getElementById('spGrid').insertAdjacentHTML('beforeend', spHtmlList.slice(spShown, next).join(''));
+  spShown = next;
+  spWatchSentinel();
+}
+function spWatchSentinel(){
+  if(!spObserver) return;
+  const sentinel = document.getElementById('spSentinel');
+  spObserver.unobserve(sentinel);
+  if(spShown < spHtmlList.length) spObserver.observe(sentinel);   // observe lại để kích hoạt kiểm tra ngay nếu vẫn đang trong tầm nhìn
+}
+if('IntersectionObserver' in window){
+  spObserver = new IntersectionObserver(entries=>{
+    if(entries.some(e=>e.isIntersecting)) spAppendMore();
+  }, { rootMargin:'800px 0px' });
+}
+// reset = true khi đổi tìm kiếm/phân loại (quay về lô đầu); các lần vẽ lại khác (lưu, xóa...) giữ nguyên số thẻ đang hiện
+function renderGrid(reset){
   const grid = document.getElementById('spGrid');
   const isAdmin = currentRole === 'editor';
   renderCats();
@@ -638,7 +810,10 @@ function renderGrid(){
       html.push(spCardHtml(p, isAdmin));
     }
   }
-  grid.innerHTML = html.join('');
+  spHtmlList = html;
+  spShown = spObserver ? Math.min(html.length, reset ? SP_PAGE : Math.max(SP_PAGE, spShown)) : html.length;
+  grid.innerHTML = html.slice(0, spShown).join('');
+  spWatchSentinel();
 }
 // Chỉ gắn 1 listener cho cả lưới (không gắn lại từng nút mỗi lần render)
 const spGridEl = document.getElementById('spGrid');
@@ -661,6 +836,8 @@ spGridEl.addEventListener('click', (e)=>{
     toggleBtn.textContent = open ? 'Thu gọn ▴' : `Xem ${toggleBtn.getAttribute('data-count')} mã ▾`;
     return;
   }
+  const txt = e.target.closest('.sp-card-name, .sp-card-note');
+  if(txt){ txt.closest('.sp-card').classList.toggle('text-open'); return; }
   const img = e.target.closest('.sp-card-img img, .sp-mini-img img');
   if(img) openImgLightbox(img.getAttribute('data-full') || img.src);
 });
@@ -687,7 +864,7 @@ document.getElementById('spCats').addEventListener('click', (e)=>{
   const b = e.target.closest('[data-cat]');
   if(!b) return;
   spCategory = b.getAttribute('data-cat');
-  renderGrid();
+  renderGrid(true);
 });
 
 let spSearchDebounce = null;
@@ -696,7 +873,7 @@ document.getElementById('spSearch').addEventListener('input', (e)=>{
   clearTimeout(spSearchDebounce);
   spSearchDebounce = setTimeout(()=>{
     spSearchQuery = val;
-    renderGrid();
+    renderGrid(true);
   }, 150); // debounce nhẹ để gõ mượt, không render lại lưới mỗi ký tự
 });
 
@@ -767,6 +944,7 @@ function renderSpImgPreview(){
 async function handleSpImageFile(file){
   const ctx = spModalCtx;
   if(!ctx || ctx.saving || !file || !file.type.startsWith('image/')) return;
+  if(file.size > IMG_INPUT_MAX_BYTES){ showToast('Ảnh quá lớn (tối đa 20MB), hãy chọn ảnh nhỏ hơn'); return; }
   try{
     const variants = await spMakeVariants(file);
     if(spModalCtx !== ctx) return; // popup đã đóng trong lúc xử lý ảnh
@@ -859,6 +1037,10 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     hien_thi_viewer: document.getElementById('spMVisible').checked,
     nhom: document.getElementById('spMNhom').value.trim() || null,
   };
+  if(ctx.mode === 'new'){
+    if(!currentKhach){ statusEl.textContent = 'Chọn khách trước khi thêm sản phẩm.'; return; }
+    payload.khach_id = currentKhach.id;   // sản phẩm mới thuộc về khách đang chọn
+  }
   if(ctx.mode === 'edit'){
     const old = spProducts.find(x=>x.id === ctx.id);
     if(old && old.nhom_dai_dien && old._nhom !== spNormalizeSearch(payload.nhom || '')) payload.nhom_dai_dien = false;
@@ -957,9 +1139,9 @@ document.getElementById('btnMigrate').addEventListener('click', async ()=>{
     btn.textContent = `Đang chuyển ${i + 1}/${todo.length}...`;
     let url = null;
     try{
-      const fullBlob = await (await fetch(p.hinh_anh)).blob();      // giữ nguyên ảnh cũ, không nén lại
-      const thumb = await scaleImage(await blobToImage(fullBlob), IMG_THUMB_MAX, 0.75);
-      url = await spUploadVariants({ full: fullBlob, thumb });
+      const srcBlob = await (await fetch(p.hinh_anh)).blob();
+      const variants = await spMakeVariants(srcBlob);               // nén theo trần dung lượng; ảnh cũ đã nhỏ gọn thì giữ nguyên
+      url = await spUploadVariants(variants);
       const {data, error} = await sbClient.from('san_pham').update({ hinh_anh: url }).eq('id', p.id).select('id').maybeSingle();
       if(error) throw error;
       if(!data) throw new Error('Không cập nhật được dòng ' + p.id);
@@ -1018,11 +1200,11 @@ function orderRowHtml(pid, ten, qty, note, opts){
     </div>
     <div class="field">
       <label>Số lượng</label>
-      <input type="number" class="order-qty" min="1" value="${escapeHtml(String(qty))}" inputmode="numeric">
+      <input type="number" class="order-qty" min="1" max="999999" value="${escapeHtml(String(qty))}" inputmode="numeric">
     </div>
     <div class="field">
       <label>Ghi chú (không bắt buộc)</label>
-      <textarea class="order-note" rows="2" placeholder="VD: giao trước thứ 6, cần gấp...">${escapeHtml(note || '')}</textarea>
+      <textarea class="order-note" rows="2" maxlength="300" placeholder="VD: giao trước thứ 6, cần gấp...">${escapeHtml(note || '')}</textarea>
     </div>
   </div>`;
 }
@@ -1122,13 +1304,16 @@ document.getElementById('orderSubmitBtn').addEventListener('click', ()=>{
 
 /* ---- icon giỏ hàng nổi + bảng xem lại đơn hàng ---- */
 /* Giỏ hàng lưu tạm trong phiên duyệt (sessionStorage): tải lại trang vẫn còn, tắt tab thì tự mất */
-const CART_KEY = 'spCart';
+/* Mỗi khách 1 giỏ riêng (khóa theo id khách) → chuyển khách không bị lẫn hàng */
+let cartKey = null;
 function saveCart(){
-  try{ sessionStorage.setItem(CART_KEY, JSON.stringify(cart)); }catch(e){ /* chế độ riêng tư/đầy bộ nhớ: bỏ qua */ }
+  if(!cartKey) return;
+  try{ sessionStorage.setItem(cartKey, JSON.stringify(cart)); }catch(e){ /* chế độ riêng tư/đầy bộ nhớ: bỏ qua */ }
 }
 function loadCart(){
+  if(!cartKey) return [];
   try{
-    const arr = JSON.parse(sessionStorage.getItem(CART_KEY) || '[]');
+    const arr = JSON.parse(sessionStorage.getItem(cartKey) || '[]');
     if(!Array.isArray(arr)) return [];
     return arr
       .filter(l => l && typeof l.ten === 'string' && Number.isFinite(l.lineId))
@@ -1145,10 +1330,13 @@ function updateCartFab(){
   fab.style.display = 'flex';
   document.getElementById('cartFabCount').textContent = cart.length;
 }
-// Khôi phục giỏ khi mở/tải lại trang
-cart = loadCart();
-cartLineSeq = cart.reduce((m, l)=> Math.max(m, l.lineId), 0) + 1;
-updateCartFab();
+// Gắn giỏ hàng với 1 khách (null = chưa vào khách nào → giỏ trống, ẩn nút giỏ)
+function bindCartToKhach(khach){
+  cartKey = khach ? 'spCart:' + khach.id : null;
+  cart = loadCart();
+  cartLineSeq = cart.reduce((m, l)=> Math.max(m, l.lineId), 0) + 1;
+  updateCartFab();
+}
 function renderCartList(){
   const listEl = document.getElementById('cartList');
   const emptyEl = document.getElementById('cartEmpty');
@@ -1199,7 +1387,7 @@ document.getElementById('cartClearBtn').addEventListener('click', ()=>{
 });
 document.getElementById('cartSendBtn').addEventListener('click', async ()=>{
   if(!cart.length){ showToast('Chưa có sản phẩm nào trong đơn hàng'); return; }
-  let msg = 'Đặt hàng:\n';
+  let msg = (currentKhach ? `Khách: ${currentKhach.ten}\n` : '') + 'Đặt hàng:\n';
   cart.forEach((line, idx)=>{
     msg += `${idx+1}. ${line.ten} — SL: ${line.qty}`;
     if(line.note) msg += ` (Ghi chú: ${line.note})`;
@@ -1211,6 +1399,282 @@ document.getElementById('cartSendBtn').addEventListener('click', async ()=>{
   cart = [];
   updateCartFab();
   closeCartModal();
+});
+
+/* ---------- KHÁCH HÀNG: nhập mã để vào, admin chọn khách để quản lý ---------- */
+// Mã khách: chỉ chữ HOA + số (bỏ dấu cách/gạch nối người dùng gõ thêm)
+function khachNormalizeCode(s){ return (s || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+const KHACH_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // bỏ I, L, O, 0, 1 cho khỏi nhầm khi đọc/gõ (31 ký tự)
+function khachGenCode(len){
+  len = len || 10;
+  const out = [];
+  const limit = 256 - (256 % KHACH_ALPHABET.length);        // loại byte lẻ để mỗi ký tự có xác suất như nhau
+  while(out.length < len){
+    const buf = new Uint8Array(len * 2);
+    crypto.getRandomValues(buf);
+    for(const b of buf){ if(b < limit && out.length < len) out.push(KHACH_ALPHABET[b % KHACH_ALPHABET.length]); }
+  }
+  return out.join('');
+}
+function khachLink(ma){ return location.href.split(/[?#]/)[0] + '?k=' + ma; }
+
+// Chuyển giữa các màn: 'loading' | 'gate' (nhập mã) | 'app' (danh sách sản phẩm)
+function setView(v){
+  document.getElementById('loading').style.display = v === 'loading' ? 'block' : 'none';
+  document.getElementById('gate').style.display = v === 'gate' ? 'flex' : 'none';
+  document.getElementById('spSearchCard').style.display = v === 'app' ? 'flex' : 'none';
+  document.getElementById('mainApp').style.display = v === 'app' ? 'block' : 'none';
+}
+function resetListFilters(){
+  spSearchQuery = '';
+  document.getElementById('spSearch').value = '';
+  spCategory = 'all';
+  spOpenGroups.clear();
+}
+
+function showGate(msg, prefill){
+  currentKhach = null;
+  spProducts = [];
+  bindCartToKhach(null);
+  resetListFilters();
+  setView('gate');
+  updateAuthHeader();
+  const input = document.getElementById('gateCode');
+  const err = document.getElementById('gateError');
+  input.value = prefill || '';
+  err.textContent = msg || '';
+  err.style.display = msg ? 'block' : 'none';
+  if(!prefill) setTimeout(()=> input.focus(), 50);
+}
+
+// Khách: nhập mã → hàm khach_lay_du_lieu trả về đúng sản phẩm của khách đó (sai mã/bị khóa → null)
+async function enterCustomerMode(ma){
+  setView('loading');
+  let data = null;
+  try{
+    const r = await sbClient.rpc('khach_lay_du_lieu', { p_ma: ma });
+    if(r.error) throw r.error;
+    data = r.data;
+  }catch(e){
+    console.error('khach_lay_du_lieu:', e);
+    showGate('Không tải được dữ liệu. Kiểm tra mạng rồi thử lại.', ma);
+    return false;
+  }
+  if(!data || !data.khach){
+    lsDel(KHACH_CODE_KEY);
+    showGate('Mã không đúng hoặc đã bị khóa.', ma);
+    return false;
+  }
+  lsSet(KHACH_CODE_KEY, ma);
+  currentKhach = { id: data.khach.id, ten: data.khach.ten };
+  spProducts = (data.san_pham || []).map(spPrep);
+  spProducts.sort(spCompareByCode);
+  bindCartToKhach(currentKhach);
+  resetListFilters();
+  setView('app');
+  updateAuthHeader();
+  renderGrid(true);
+  return true;
+}
+
+// Admin: tải danh sách khách, chọn khách (nhớ lần trước) rồi tải sản phẩm của khách đó
+async function enterAdminMode(){
+  setView('loading');
+  try{
+    const {data, error} = await sbClient.from('khach_hang').select('id,ten,ma,hoat_dong').order('created_at', {ascending:true});
+    if(error) throw error;
+    khachList = data || [];
+  }catch(e){
+    console.error('load khach_hang:', e);
+    khachList = [];
+    showToast('Lỗi tải danh sách khách. (Đã chạy file supabase_khach.sql chưa?)');
+  }
+  const savedId = lsGet(ADMIN_KHACH_KEY);
+  currentKhach = khachList.find(k=>k.id === savedId) || khachList[0] || null;
+  bindCartToKhach(currentKhach);
+  await loadAll();
+  resetListFilters();
+  setView('app');
+  renderKhachBar();
+  updateAuthHeader();
+  renderGrid(true);
+}
+
+// Quyết định vào màn nào sau khi biết vai trò
+async function startApp(){
+  if(currentRole === 'editor'){ await enterAdminMode(); return; }
+  const params = new URLSearchParams(location.search);
+  const fromUrl = khachNormalizeCode(params.get('k'));
+  if(fromUrl){ try{ history.replaceState(null, '', location.href.split(/[?#]/)[0] + location.hash); }catch(e){} } // gỡ mã khỏi thanh địa chỉ
+  const ma = fromUrl || khachNormalizeCode(lsGet(KHACH_CODE_KEY));
+  if(ma) await enterCustomerMode(ma); else showGate();
+}
+
+async function submitGate(){
+  const btn = document.getElementById('gateBtn');
+  const ma = khachNormalizeCode(document.getElementById('gateCode').value);
+  if(ma.length < 8){
+    const err = document.getElementById('gateError');
+    err.textContent = 'Nhập đủ mã khách (ít nhất 8 ký tự).';
+    err.style.display = 'block';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Đang kiểm tra...';
+  await enterCustomerMode(ma);
+  btn.disabled = false; btn.textContent = 'Vào xem sản phẩm';
+}
+document.getElementById('gateBtn').addEventListener('click', submitGate);
+document.getElementById('gateCode').addEventListener('keydown', e=>{ if(e.key === 'Enter') submitGate(); });
+document.getElementById('btnSwitchKhach').addEventListener('click', ()=>{
+  lsDel(KHACH_CODE_KEY);
+  showGate();
+});
+
+/* ---- Admin: thanh chọn khách + hộp thoại thêm/sửa khách ---- */
+function renderKhachBar(){
+  const sel = document.getElementById('khachSelect');
+  sel.innerHTML = khachList.length
+    ? khachList.map(k=>`<option value="${escapeHtml(k.id)}"${currentKhach && k.id === currentKhach.id ? ' selected' : ''}>${escapeHtml(k.ten)}${k.hoat_dong ? '' : ' (đang khóa)'}</option>`).join('')
+    : '<option value="">Chưa có khách nào</option>';
+  document.getElementById('btnKhachEdit').disabled = !currentKhach;
+  document.getElementById('btnKhachLink').disabled = !currentKhach;
+}
+document.getElementById('khachSelect').addEventListener('change', async (e)=>{
+  const k = khachList.find(x=>x.id === e.target.value);
+  if(!k) return;
+  currentKhach = k;
+  lsSet(ADMIN_KHACH_KEY, k.id);
+  const seq = ++khachLoadSeq;
+  bindCartToKhach(k);
+  resetListFilters();
+  spProducts = [];
+  renderGrid(true);
+  await loadAll();
+  if(seq !== khachLoadSeq) return;
+  renderKhachBar();
+  updateAuthHeader();
+  renderGrid(true);
+});
+document.getElementById('btnKhachLink').addEventListener('click', async ()=>{
+  if(!currentKhach) return;
+  await copyToClipboard(khachLink(currentKhach.ma));
+  showToast(`Đã sao chép link của ${currentKhach.ten}`);
+});
+
+let khachModalCtx = null; // { mode:'new'|'edit', id, saving }
+function updateKhachLinkField(){
+  const ma = khachNormalizeCode(document.getElementById('khachMCode').value);
+  document.getElementById('khachMLink').value = ma ? khachLink(ma) : '';
+}
+function openKhachModal(mode){
+  if(mode === 'edit' && !currentKhach) return;
+  khachModalCtx = { mode, id: mode === 'edit' ? currentKhach.id : null, oldMa: mode === 'edit' ? currentKhach.ma : null, saving: false };
+  document.getElementById('khachModalTitle').textContent = mode === 'edit' ? 'Sửa khách' : 'Thêm khách';
+  document.getElementById('khachMName').value = mode === 'edit' ? currentKhach.ten : '';
+  document.getElementById('khachMCode').value = mode === 'edit' ? currentKhach.ma : khachGenCode();
+  document.getElementById('khachMActive').checked = mode === 'edit' ? !!currentKhach.hoat_dong : true;
+  document.getElementById('khachMDeleteBtn').style.display = mode === 'edit' ? 'inline-block' : 'none';
+  document.getElementById('khachSaveStatus').textContent = '';
+  document.getElementById('khachMSaveBtn').disabled = false;
+  updateKhachLinkField();
+  document.getElementById('khachModalOverlay').classList.add('open');
+  setTimeout(()=> document.getElementById('khachMName').focus(), 50);
+}
+function closeKhachModal(){
+  document.getElementById('khachModalOverlay').classList.remove('open');
+  khachModalCtx = null;
+}
+document.getElementById('btnKhachNew').addEventListener('click', ()=> openKhachModal('new'));
+document.getElementById('btnKhachEdit').addEventListener('click', ()=> openKhachModal('edit'));
+document.getElementById('khachModalCloseBtn').addEventListener('click', closeKhachModal);
+document.getElementById('khachMCancelBtn').addEventListener('click', closeKhachModal);
+document.getElementById('khachMCode').addEventListener('input', updateKhachLinkField);
+document.getElementById('khachMGenBtn').addEventListener('click', ()=>{
+  document.getElementById('khachMCode').value = khachGenCode();
+  updateKhachLinkField();
+});
+document.getElementById('khachMCopyBtn').addEventListener('click', async ()=>{
+  const link = document.getElementById('khachMLink').value;
+  if(!link) return;
+  await copyToClipboard(link);
+  showToast('Đã sao chép link');
+});
+document.getElementById('khachMSaveBtn').addEventListener('click', async ()=>{
+  const ctx = khachModalCtx;
+  if(!ctx || ctx.saving) return;
+  const status = document.getElementById('khachSaveStatus');
+  const saveBtn = document.getElementById('khachMSaveBtn');
+  const ten = document.getElementById('khachMName').value.trim();
+  const ma = khachNormalizeCode(document.getElementById('khachMCode').value);
+  if(!ten){ status.textContent = 'Nhập tên khách.'; return; }
+  if(!/^[A-Z0-9]{8,24}$/.test(ma)){ status.textContent = 'Mã khách gồm 8–24 chữ hoặc số.'; return; }
+  if(ctx.mode === 'edit' && ctx.oldMa && ma !== ctx.oldMa && !confirm('Đổi mã thì mã và link cũ của khách này sẽ không dùng được nữa. Tiếp tục?')) return;
+  const payload = { ten, ma, hoat_dong: document.getElementById('khachMActive').checked };
+  ctx.saving = true; saveBtn.disabled = true;
+  status.textContent = 'Đang lưu...';
+  try{
+    let row;
+    if(ctx.mode === 'edit'){
+      const {data, error} = await sbClient.from('khach_hang').update(payload).eq('id', ctx.id).select('id,ten,ma,hoat_dong').maybeSingle();
+      if(error) throw error;
+      if(!data) throw new Error('Không cập nhật được khách (không có quyền?)');
+      row = data;
+      const idx = khachList.findIndex(k=>k.id === row.id);
+      if(idx >= 0) khachList[idx] = row;
+      currentKhach = row;
+    } else {
+      const {data, error} = await sbClient.from('khach_hang').insert(payload).select('id,ten,ma,hoat_dong').single();
+      if(error) throw error;
+      row = data;
+      khachList.push(row);
+      currentKhach = row;
+      lsSet(ADMIN_KHACH_KEY, row.id);
+      bindCartToKhach(row);
+      resetListFilters();
+      spProducts = [];
+    }
+    closeKhachModal();
+    renderKhachBar();
+    updateAuthHeader();
+    renderGrid(true);
+    showToast(ctx.mode === 'edit' ? 'Đã lưu khách' : `Đã thêm khách ${row.ten}`);
+  }catch(e){
+    console.error('save khach_hang:', e);
+    status.textContent = (e && e.code === '23505')
+      ? 'Mã này đã có khách khác dùng, hãy bấm "Tạo mã mới".'
+      : 'Lỗi khi lưu. (Đã chạy file supabase_khach.sql chưa?)';
+    ctx.saving = false; saveBtn.disabled = false;
+  }
+});
+document.getElementById('khachMDeleteBtn').addEventListener('click', async ()=>{
+  const ctx = khachModalCtx;
+  if(!ctx || ctx.mode !== 'edit' || ctx.saving || !currentKhach) return;
+  const status = document.getElementById('khachSaveStatus');
+  if(spProducts.length){
+    status.textContent = `Khách còn ${spProducts.length} sản phẩm. Hãy xóa hết sản phẩm, hoặc bỏ tick "Cho phép khách này truy cập" để khóa.`;
+    return;
+  }
+  if(!confirm(`Xóa khách "${currentKhach.ten}"?`)) return;
+  ctx.saving = true;
+  try{
+    const {error} = await sbClient.from('khach_hang').delete().eq('id', ctx.id);
+    if(error) throw error;
+    khachList = khachList.filter(k=>k.id !== ctx.id);
+    closeKhachModal();
+    currentKhach = khachList[0] || null;
+    if(currentKhach) lsSet(ADMIN_KHACH_KEY, currentKhach.id); else lsDel(ADMIN_KHACH_KEY);
+    bindCartToKhach(currentKhach);
+    resetListFilters();
+    await loadAll();
+    renderKhachBar();
+    updateAuthHeader();
+    renderGrid(true);
+    showToast('Đã xóa khách');
+  }catch(e){
+    console.error('delete khach_hang:', e);
+    status.textContent = 'Lỗi khi xóa.';
+    ctx.saving = false;
+  }
 });
 
 /* ---------- AUTH (dùng chung app_users với các web khác) ---------- */
@@ -1230,7 +1694,12 @@ function updateAuthHeader(){
   document.getElementById('btnShowLogin').style.display = isLoggedIn ? 'none' : 'inline-block';
   document.getElementById('currentUserLabel').style.display = isLoggedIn ? 'inline' : 'none';
   document.getElementById('btnLogout').style.display = isLoggedIn ? 'inline-block' : 'none';
-  document.getElementById('btnAddProduct').style.display = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('btnAddProduct').style.display = (isAdmin && currentKhach) ? 'inline-block' : 'none';
+  document.getElementById('btnSwitchKhach').style.display = (!isAdmin && currentKhach) ? 'inline-block' : 'none';
+  document.getElementById('khachBar').style.display = isAdmin ? 'flex' : 'none';
+  const nameEl = document.getElementById('khachName');
+  nameEl.textContent = (!isAdmin && currentKhach) ? currentKhach.ten : '';
+  nameEl.style.display = (!isAdmin && currentKhach) ? 'block' : 'none';
   updateMigrateBtn();
 }
 async function afterLogin(user){
@@ -1247,7 +1716,6 @@ async function afterLogin(user){
   currentRole = data.role;
   document.getElementById('currentUserLabel').textContent = data.username + (currentRole==='editor' ? ' · Toàn quyền' : ' · Chỉ xem');
   updateAuthHeader();
-  renderGrid();
 }
 async function doLogin(){
   const username = document.getElementById('loginUsername').value.trim();
@@ -1269,6 +1737,7 @@ async function doLogin(){
   document.getElementById('loginPassword').value = '';
   await afterLogin(data.user);
   closeLoginModal();
+  if(currentRole === 'editor') await startApp();   // admin: chuyển sang chế độ quản lý khách
 }
 document.getElementById('btnShowLogin').addEventListener('click', openLoginModal);
 document.getElementById('loginModalCloseBtn').addEventListener('click', closeLoginModal);
@@ -1278,27 +1747,21 @@ document.getElementById('loginPassword').addEventListener('keydown', e=>{ if(e.k
 document.getElementById('loginUsername').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('loginPassword').focus(); });
 document.getElementById('btnLogout').addEventListener('click', async ()=>{
   await sbClient.auth.signOut();
-  currentUser = null; currentRole = null;
-  updateAuthHeader();
-  renderGrid();
-  showToast('Đã đăng xuất, chuyển sang chế độ chỉ xem');
+  const wasAdmin = currentRole === 'editor';
+  currentUser = null; currentRole = null; khachList = [];
+  if(wasAdmin) showGate(); else updateAuthHeader();   // admin thoát: về màn nhập mã; khách đang xem thì giữ nguyên
+  showToast('Đã đăng xuất');
 });
 
 /* ---------- INIT ---------- */
 async function init(){
-  document.getElementById('loading').style.display = 'block';
+  setView('loading');
   currentRole = null;
-  await loadAll();
-  renderGrid();
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('mainApp').style.display = 'block';
-
-  const {data:{session}} = await sbClient.auth.getSession();
-  if(session && session.user){
-    await afterLogin(session.user);
-  } else {
-    updateAuthHeader();
-  }
+  try{
+    const {data:{session}} = await sbClient.auth.getSession();
+    if(session && session.user) await afterLogin(session.user);
+  }catch(e){ console.error('getSession:', e); }
+  await startApp();
 }
 init();
 </script>
