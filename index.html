@@ -219,8 +219,9 @@
     .app{ padding:16px 14px 60px; }
     .header .tagline{ font-size:18px; }
     .sp-grid{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
-    /* input/textarea >=16px để iOS Safari không tự zoom khi bấm vào ô nhập */
-    input, textarea, select{ font-size:16px; }
+    /* input/textarea >=16px để iOS Safari không tự zoom khi bấm vào ô nhập.
+       (liệt kê thêm các ô có quy tắc cỡ chữ riêng, vì chúng đè lên quy tắc chung ở trên) */
+    input, textarea, select, .search-input input, .khach-link-row input{ font-size:16px; }
     button{ min-height:44px; }
     .btn-small{ min-height:38px; }
 
@@ -260,7 +261,7 @@
   <div class="card search-card" id="spSearchCard" style="display:none;">
     <div class="search-input">
       <span class="search-icon" aria-hidden="true">⌕</span>
-      <input type="text" id="spSearch" placeholder="Tìm sản phẩm... (không cần gõ dấu)" enterkeyhint="search" autocomplete="off">
+      <input type="text" id="spSearch" placeholder="Tìm sản phẩm..." enterkeyhint="search" autocomplete="off">
       <button type="button" class="search-clear" id="spSearchClear" aria-label="Xóa nội dung tìm kiếm" title="Xóa">
         <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none"/></svg>
       </button>
