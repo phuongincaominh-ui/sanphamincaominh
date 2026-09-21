@@ -142,6 +142,14 @@
   .khach-bar{ display:none; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px; margin-bottom:12px; }
   .khach-bar label{ font-size:12px; font-weight:700; color:var(--ink-soft); }
   .khach-bar select{ flex:1; min-width:150px; width:auto; }
+  /* danh sách tick nhóm dùng chung trong hộp thoại sản phẩm */
+  .nhom-check-list{ max-height:200px; overflow-y:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--surface-alt); padding:4px; }
+  .nhom-check{ display:flex; align-items:center; gap:10px; padding:8px 10px; min-height:42px; border-radius:8px; font-size:13.5px; font-weight:600; line-height:1.35; cursor:pointer; user-select:none; }
+  .nhom-check:hover{ background:var(--surface); }
+  .nhom-check input{ width:18px; height:18px; padding:0; margin:0; flex:0 0 auto; accent-color:var(--red); }
+  .nhom-check em{ font-style:normal; font-weight:500; font-size:12px; color:var(--ink-soft); }
+  .nhom-check-empty{ padding:12px; font-size:12.5px; color:var(--ink-soft); text-align:center; }
+  .sp-group-row-tag.shared{ color:var(--red-dark); }
   .khach-link-row{ display:flex; gap:8px; }
   .khach-link-row input{ flex:1; min-width:0; font-size:13px; font-weight:500; color:var(--ink-soft); }
 
@@ -326,6 +334,13 @@
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">Các sản phẩm ghi cùng tên nhóm sẽ hiện chung trong hộp thoại đặt hàng. Để trống nếu sản phẩm đặt riêng.</div>
       </div>
       <div class="field">
+        <label>Dùng chung thêm ở các nhóm khác (không bắt buộc)</label>
+        <input type="text" id="spNhomPhuFilter" placeholder="Tìm nhóm..." autocomplete="off">
+        <div class="nhom-check-list" id="spNhomPhuList"></div>
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;" id="spNhomPhuSummary"></div>
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">Tick các nhóm mà sản phẩm này cũng được đặt chung, không cần tạo lại sản phẩm. Nếu sản phẩm chỉ dùng chung cho các nhóm khác thì để trống ô "Nhóm đặt chung" ở trên, sản phẩm vẫn hiện thẻ riêng ngoài lưới.</div>
+      </div>
+      <div class="field">
         <label>Hình ảnh</label>
         <div class="img-dropzone" id="spImgDropzone" tabindex="0">
           <img id="spMImgPreview" class="img-preview" style="display:none;">
@@ -485,7 +500,7 @@ const IMG_THUMB_MAX = 420;  // cạnh dài nhất của ảnh nhỏ trên lướ
 const IMG_FULL_BYTES  = 150 * 1024;
 const IMG_THUMB_BYTES = 30 * 1024;
 const IMG_INPUT_MAX_BYTES = 20 * 1024 * 1024; // từ chối ảnh gốc quá lớn (dễ treo trình duyệt khi giải mã)
-const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer,nhom,nhom_dai_dien';
+const SP_COLS = 'id,ten,hinh_anh,ghi_chu,hien_thi_viewer,nhom,nhom_dai_dien,nhom_phu';
 const IMG_PUBLIC_MARKER = `${SUPABASE_URL}/storage/v1/object/public/${IMG_BUCKET}/`;
 
 function spIsStorageUrl(url){ return typeof url === 'string' && url.startsWith(IMG_PUBLIC_MARKER); }
@@ -624,6 +639,9 @@ function spPrep(p){
   p._q = spNormalizeSearch(p.ten + ' ' + (p.nhom || ''));
   p._code = spProductCode(p.ten);
   p._nhom = spNormalizeSearch((p.nhom || '').trim());   // khóa so sánh nhóm (không phân biệt hoa/thường/dấu)
+  // Nhóm phụ: các nhóm khác mà sản phẩm này cũng được đặt chung (không tính nhóm chính, không trùng)
+  p.nhom_phu = Array.isArray(p.nhom_phu) ? p.nhom_phu : [];
+  p._nhomPhu = [...new Set(p.nhom_phu.map(n=> spNormalizeSearch((n || '').toString().trim())).filter(k=> k && k !== p._nhom))];
   return p;
 }
 
@@ -697,20 +715,38 @@ function spCardHtml(p, isAdmin){
       </div>
     </div>`;
 }
+/* Các nhóm và thành viên của từng nhóm. Thành viên = mã có nhóm chính là nhóm này
+   + mã "dùng chung" được tick thêm vào nhóm này. Nhóm chỉ tồn tại khi có ít nhất 1 mã thuộc nhóm chính. */
+function spBuildGroups(isAdmin){
+  const visible = spProducts.filter(p=> isAdmin || p.hien_thi_viewer);
+  const groups = new Map();   // khóa nhóm → { all: [thành viên theo thứ tự mã] }
+  visible.forEach(p=>{ if(p._nhom && !groups.has(p._nhom)) groups.set(p._nhom, { all: [] }); });
+  visible.forEach(p=>{
+    const keys = new Set(p._nhomPhu);
+    if(p._nhom) keys.add(p._nhom);
+    keys.forEach(k=>{ const g = groups.get(k); if(g) g.all.push(p); });
+  });
+  return groups;
+}
 // Thẻ bộ: gộp các mã cùng nhóm thành 1 thẻ; bấm "Xem N mã" để xổ danh sách từng mã
 const spOpenGroups = new Set();
 function spGroupCardHtml(key, members, matchIds, searching, isAdmin){
-  // Sản phẩm đại diện: mã admin chỉ định; chưa chỉ định thì lấy mã đầu tiên có ảnh (hoặc mã đầu tiên)
-  const cover = members.find(m=>m.nhom_dai_dien) || members.find(m=>m.hinh_anh) || members[0];
+  // Sản phẩm đại diện: mã admin chỉ định; chưa chỉ định thì lấy mã đầu tiên có ảnh (hoặc mã đầu tiên).
+  // Chỉ xét các mã thuộc nhóm chính này — mã dùng chung từ nhóm khác không làm đại diện.
+  const home = members.filter(m=> m._nhom === key);
+  const cover = home.find(m=>m.nhom_dai_dien) || home.find(m=>m.hinh_anh) || home[0];
   const open = searching || spOpenGroups.has(key);
   const rows = members.map(m=>{
     const mini = m.hinh_anh ? spImgHtml(m) : `<span class="sp-noimg">Chưa có ảnh</span>`;
-    const hid = (isAdmin && !m.hien_thi_viewer) ? '<div class="sp-group-row-tag">Ẩn với viewer</div>' : '';
+    const shared = m._nhom !== key;   // mã dùng chung (thuộc nhóm chính khác)
+    const hid = (isAdmin && !m.hien_thi_viewer ? '<div class="sp-group-row-tag">Ẩn với viewer</div>' : '')
+              + (isAdmin && shared ? '<div class="sp-group-row-tag shared">Dùng chung</div>' : '');
     let btns = '';
     if(isAdmin){
-      const coverBtn = m.id === cover.id
-        ? '<span class="sp-cover-tag">✓ Đang hiển thị</span>'
-        : `<button class="btn-ghost btn-small" data-set-cover="${m.id}">Hiển thị ảnh này</button>`;
+      const coverBtn = shared ? ''
+        : m.id === cover.id
+          ? '<span class="sp-cover-tag">✓ Đang hiển thị</span>'
+          : `<button class="btn-ghost btn-small" data-set-cover="${m.id}">Hiển thị ảnh này</button>`;
       btns = `<div class="sp-group-row-btns">${coverBtn}<button class="btn-ghost btn-small" data-edit="${m.id}">Sửa</button></div>`;
     }
     return `<div class="sp-group-row${matchIds.has(m.id) ? ' match' : ''}">
@@ -790,18 +826,14 @@ function renderGrid(reset){
   const searching = spNormalizeSearch(spSearchQuery.trim()) !== '';
   document.getElementById('spCount').textContent = list.length ? `${list.length} sản phẩm` : '';
   document.getElementById('spEmpty').style.display = list.length ? 'none' : 'block';
-  // các nhóm (chỉ tính sản phẩm khách được thấy): nhóm có từ 2 mã trở lên mới gộp thành thẻ bộ
-  const groups = new Map();
-  spProducts.forEach(p=>{
-    if(!p._nhom || (!isAdmin && !p.hien_thi_viewer)) return;
-    if(!groups.has(p._nhom)) groups.set(p._nhom, []);
-    groups.get(p._nhom).push(p);
-  });
+  // các nhóm (chỉ tính sản phẩm khách được thấy): nhóm có từ 2 mã trở lên (kể cả mã dùng chung) mới gộp thành thẻ bộ
+  const groups = spBuildGroups(isAdmin);
   const matchIds = new Set(list.map(p=>p.id));
   const seen = new Set();
   const html = [];
   for(const p of list){
-    const members = p._nhom ? groups.get(p._nhom) : null;
+    const g = p._nhom ? groups.get(p._nhom) : null;
+    const members = g ? g.all : null;
     if(members && members.length > 1){
       if(seen.has(p._nhom)) continue;   // cả nhóm chỉ hiện 1 thẻ, tại vị trí mã đầu tiên khớp
       seen.add(p._nhom);
@@ -815,6 +847,54 @@ function renderGrid(reset){
   grid.innerHTML = html.slice(0, spShown).join('');
   spWatchSentinel();
 }
+/* ---------- NHÓM PHỤ: tick các nhóm mà 1 sản phẩm cũng được đặt chung ---------- */
+let spNhomPhuSel = new Map();   // khóa nhóm → tên hiển thị (các nhóm đang tick)
+let spNhomPhuAll = new Map();   // khóa nhóm → tên hiển thị (mọi nhóm có thể chọn)
+function spNhomPhuInit(p){
+  spNhomPhuSel = new Map();
+  ((p && p.nhom_phu) || []).forEach(n=>{
+    const name = (n || '').toString().trim();
+    const k = spNormalizeSearch(name);
+    if(k) spNhomPhuSel.set(k, name);
+  });
+  spNhomPhuAll = new Map();
+  spProducts.forEach(x=>{ if(x._nhom && !spNhomPhuAll.has(x._nhom)) spNhomPhuAll.set(x._nhom, x.nhom.trim()); });
+  document.getElementById('spNhomPhuFilter').value = '';
+  spNhomPhuRender();
+}
+function spNhomPhuRender(){
+  const own = spNormalizeSearch(document.getElementById('spMNhom').value.trim());   // nhóm chính đang nhập
+  if(own) spNhomPhuSel.delete(own);                                                  // nhóm chính thì không tính là nhóm phụ
+  const f = spNormalizeSearch(document.getElementById('spNhomPhuFilter').value.trim());
+  const all = new Map(spNhomPhuAll);
+  spNhomPhuSel.forEach((name, k)=>{ if(!all.has(k)) all.set(k, name); });           // nhóm đã lưu nhưng nay không còn sản phẩm nào
+  const items = [...all.entries()]
+    .filter(([k])=> k !== own && (!f || k.includes(f)))
+    .sort((a, b)=> a[1].localeCompare(b[1], 'vi', { numeric:true }));
+  document.getElementById('spNhomPhuList').innerHTML = items.length
+    ? items.map(([k, name])=>`<label class="nhom-check"><input type="checkbox" data-nhom-key="${escapeHtml(k)}"${spNhomPhuSel.has(k) ? ' checked' : ''}><span>${escapeHtml(name)}${spNhomPhuAll.has(k) ? '' : ' <em>(chưa có sản phẩm nào)</em>'}</span></label>`).join('')
+    : `<div class="nhom-check-empty">${f ? 'Không tìm thấy nhóm nào.' : 'Chưa có nhóm nào để chọn.'}</div>`;
+  spNhomPhuSummary();
+}
+function spNhomPhuSummary(){
+  const n = spNhomPhuSel.size;
+  document.getElementById('spNhomPhuSummary').textContent = n ? `Đang dùng chung thêm ở ${n} nhóm.` : 'Chưa chọn nhóm nào.';
+}
+document.getElementById('spNhomPhuList').addEventListener('change', (e)=>{
+  const cb = e.target.closest('input[data-nhom-key]');
+  if(!cb) return;
+  const k = cb.dataset.nhomKey;
+  if(cb.checked){
+    const label = cb.parentElement.querySelector('span');
+    spNhomPhuSel.set(k, spNhomPhuAll.get(k) || (label ? label.textContent.replace(/\s*\(chưa có sản phẩm nào\)\s*$/, '').trim() : k));
+  } else {
+    spNhomPhuSel.delete(k);
+  }
+  spNhomPhuSummary();
+});
+document.getElementById('spNhomPhuFilter').addEventListener('input', spNhomPhuRender);
+document.getElementById('spMNhom').addEventListener('input', spNhomPhuRender);
+
 // Chỉ gắn 1 listener cho cả lưới (không gắn lại từng nút mỗi lần render)
 const spGridEl = document.getElementById('spGrid');
 spGridEl.addEventListener('click', (e)=>{
@@ -910,6 +990,7 @@ function openProductModal(mode, id){
     nhomHint.dataset.nhom = nhomSuggest;
   }
   document.getElementById('spNhomList').innerHTML = [...nhomSeen.values()].map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
+  spNhomPhuInit(p);
   document.getElementById('spMVisible').checked = p ? !!p.hien_thi_viewer : true;
   document.getElementById('spMDeleteBtn').style.display = mode==='edit' ? 'inline-block' : 'none';
   document.getElementById('spMDeleteBtn').disabled = false;
@@ -1011,6 +1092,7 @@ document.getElementById('spCodeHint').addEventListener('click', (e)=>{
 document.getElementById('spNhomHint').addEventListener('click', ()=>{
   const input = document.getElementById('spMNhom');
   input.value = document.getElementById('spNhomHint').dataset.nhom || '';
+  spNhomPhuRender();
   input.focus();
 });
 document.getElementById('spModalCloseBtn').addEventListener('click', closeProductModal);
@@ -1037,6 +1119,11 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     hien_thi_viewer: document.getElementById('spMVisible').checked,
     nhom: document.getElementById('spMNhom').value.trim() || null,
   };
+  {
+    // nhóm phụ: bỏ nhóm trùng với nhóm chính, xếp theo tên cho ổn định
+    const ownKey = spNormalizeSearch(payload.nhom || '');
+    payload.nhom_phu = [...spNhomPhuSel.entries()].filter(([k])=> k !== ownKey).map(([, name])=> name).sort((a, b)=> a.localeCompare(b, 'vi', { numeric:true }));
+  }
   if(ctx.mode === 'new'){
     if(!currentKhach){ statusEl.textContent = 'Chọn khách trước khi thêm sản phẩm.'; return; }
     payload.khach_id = currentKhach.id;   // sản phẩm mới thuộc về khách đang chọn
@@ -1089,7 +1176,7 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
     if(uploadedUrl) await spRemoveImageFiles(uploadedUrl); // dọn ảnh vừa tải lên nếu lưu thất bại
     statusEl.textContent = stage === 'upload'
       ? 'Lỗi tải ảnh lên. (Đã tạo bucket "san-pham" và cấp quyền trên Supabase chưa?)'
-      : 'Lỗi khi lưu. (Bảng san_pham đã có 2 cột "nhom" và "nhom_dai_dien" trên Supabase chưa?)';
+      : 'Lỗi khi lưu. (Đã chạy file supabase_nhom_phu.sql để thêm cột "nhom_phu" trên Supabase chưa?)';
     ctx.saving = false; saveBtn.disabled = false; delBtn.disabled = false;
   }
 });
@@ -1214,14 +1301,15 @@ function updateOrderSubmitLabel(){
   document.querySelectorAll('#orderRows [data-row-del]').forEach(b=>{ b.style.display = n <= 1 ? 'none' : ''; });
   document.getElementById('orderSubmitBtn').textContent = n > 1 ? `Thêm ${n} sản phẩm` : 'Thêm';
 }
+// Mã đặt kèm khi đặt riêng 1 mã: các mã cùng NHÓM CHÍNH của nó (mã dùng chung không có nhóm chính thì đặt 1 mình)
 function spGroupMates(p){
   if(!p._nhom) return [];
-  const isAdmin = currentRole === 'editor';
-  return spProducts.filter(x=> x.id !== p.id && x._nhom === p._nhom && (isAdmin || x.hien_thi_viewer));
+  return spVisibleGroup(p._nhom).filter(x=> x.id !== p.id);
 }
+// Toàn bộ mã của 1 nhóm (gồm cả mã dùng chung được thêm vào nhóm này)
 function spVisibleGroup(key){
-  const isAdmin = currentRole === 'editor';
-  return spProducts.filter(x=> x._nhom === key && (isAdmin || x.hien_thi_viewer));
+  const g = spBuildGroups(currentRole === 'editor').get(key);
+  return g ? g.all : [];
 }
 // openOrderModal(id): đặt 1 mã (kèm các mã cùng nhóm nếu có)
 // openOrderModal(null, khóaNhóm): đặt từ thẻ bộ — hiện cả bộ, mã nào cũng bỏ được (giữ lại ít nhất 1 mã)
@@ -1515,7 +1603,7 @@ async function submitGate(){
   const ma = khachNormalizeCode(document.getElementById('gateCode').value);
   if(ma.length < 8){
     const err = document.getElementById('gateError');
-    err.textContent = 'Nhập đủ mã khách (ít nhất 8 ký tự).';
+    err.textContent = 'Đây chưa phải mã khách. Mã gồm 8–24 chữ và số (khác với tên khách), do bên bán gửi cho bạn.';
     err.style.display = 'block';
     return;
   }
