@@ -89,7 +89,7 @@
   .sp-card-name{ font-weight:700; font-size:14px; color:var(--ink); line-height:1.35; }
   .sp-card-note{ font-size:12.5px; color:var(--ink-soft); line-height:1.5; white-space:pre-wrap; }
   .sp-hidden-badge{ position:absolute; top:9px; left:9px; font-size:10.5px; font-weight:700; color:var(--amber-dark); background:var(--amber-tint); padding:4px 9px; border-radius:100px; z-index:2; }
-  .sp-card-actions{ display:flex; gap:6px; margin-top:auto; padding-top:6px; }
+  .sp-card-actions{ display:flex; gap:6px; margin-top:auto; padding-top:4px; }
   .sp-card-actions button{ flex:1; padding:8px 6px; font-size:12px; }
 
   /* thẻ bộ (nhóm nhiều mã) */
@@ -196,24 +196,27 @@
   /* ---------- THẺ SẢN PHẨM ĐỀU NHAU (mọi kích thước màn hình) ----------
      Mỗi phần có chiều cao cố định: ảnh (vuông) → tên (2 dòng) → ô ghi chú / nút "Xem N mã" → nút đặt hàng.
      Nhờ vậy thẻ nào cũng cao bằng nhau, tên/ghi chú dài ngắn không làm lệch. */
-  .sp-grid{ --sp-btn-h:40px; }
+  .sp-grid{ --sp-btn-h:40px; --sp-gap:2px; }
+  .sp-card-body{ gap:var(--sp-gap); }
   .sp-card{ contain-intrinsic-size:0 400px; }
   .sp-card-name{ height:2.7em; overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
-  .sp-card-note{ height:3em; margin-bottom:calc(var(--sp-btn-h) - 3em); overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+  .sp-card-note{ height:2.7em; line-height:1.35; margin-bottom:calc(var(--sp-btn-h) + var(--sp-gap)); overflow:hidden; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
   .sp-card-note:empty{ display:block; }            /* thẻ không có ghi chú vẫn giữ chỗ trống */
   /* bấm vào tên/ghi chú để đọc đầy đủ (chỉ thẻ đó dài ra, thẻ bên cạnh giữ nguyên) */
   .sp-card-name, .sp-card-note{ cursor:pointer; }
   .sp-card.text-open .sp-card-name{ height:auto; display:block; overflow:visible; }
-  .sp-card.text-open .sp-card-note{ height:auto; min-height:var(--sp-btn-h); margin-bottom:0; display:block; overflow:visible; }
+  .sp-card.text-open .sp-card-note{ height:auto; min-height:2.7em; margin-bottom:0; display:block; overflow:visible; }
 
   .sp-card-actions button, .sp-group-actions button{ height:var(--sp-btn-h); min-height:var(--sp-btn-h); padding:0 8px; line-height:1.2; display:flex; align-items:center; justify-content:center; text-align:center; }
   .sp-card-actions button[data-edit]{ flex:0 0 auto; padding:0 14px; }
 
   /* thẻ bộ: nút "Xem N mã" nằm đúng vị trí ô ghi chú, nút đặt hàng xuống cuối → cùng kích thước thẻ thường */
+  .sp-card.sp-group .sp-card-note{ margin-bottom:0; }   /* thẻ bộ: nút "Xem N mã" nằm ngay dưới ghi chú */
+  .sp-card.sp-group.text-open .sp-card-note{ margin-bottom:0; }
   .sp-group-actions{ display:contents; }
   .sp-group-actions [data-toggle-group]{ order:1; }
   .sp-group-list{ order:2; }
-  .sp-group-actions [data-order-group]{ order:3; margin-top:6px; }
+  .sp-group-actions [data-order-group]{ order:3; margin-top:4px; }
 
   @media (max-width:520px){
     .app{ padding:16px 14px 60px; }
@@ -781,6 +784,7 @@ function spGroupCardHtml(key, members, matchIds, searching, isAdmin){
       <div class="sp-card-img">${spImgHtml(cover)}</div>
       <div class="sp-card-body">
         <div class="sp-card-name">${escapeHtml(cover.ten)}</div>
+        <div class="sp-card-note">${cover.ghi_chu ? escapeHtml(cover.ghi_chu) : ''}</div>
         <div class="sp-group-list">${rows}</div>
         <div class="sp-group-actions">
           <button class="btn-ghost btn-small" data-toggle-group="${escapeHtml(key)}" data-count="${members.length}">${open ? 'Thu gọn ▴' : `Xem ${members.length} mã ▾`}</button>
