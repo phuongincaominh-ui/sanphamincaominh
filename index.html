@@ -669,7 +669,8 @@ function spCategoryOf(ten){
 }
 let spCategory = 'all';
 function spPrep(p){
-  p._cat = spCategoryOf(p.ten);
+  p._catBase = spCategoryOf(p.ten);   // phân loại gốc theo tên (chưa tính chung nhóm)
+  p._cat = p._catBase;                // sẽ được spRecomputeCategories() ghi đè nếu cần
   p._q = spNormalizeSearch(p.ten + ' ' + (p.nhom || ''));
   p._code = spProductCode(p.ten);
   p._nhom = spNormalizeSearch((p.nhom || '').trim());   // khóa so sánh nhóm (không phân biệt hoa/thường/dấu)
@@ -677,6 +678,29 @@ function spPrep(p){
   p.nhom_phu = Array.isArray(p.nhom_phu) ? p.nhom_phu : [];
   p._nhomPhu = [...new Set(p.nhom_phu.map(n=> spNormalizeSearch((n || '').toString().trim())).filter(k=> k && k !== p._nhom))];
   return p;
+}
+// Sản phẩm "Khác" mà nằm chung 1 nhóm (nhóm chính hoặc nhóm dùng chung) với 1 sản phẩm "Tem nhãn"
+// thì được tính là "Tem nhãn". Không nằm chung nhóm nào với "Tem nhãn" thì vẫn là "Khác".
+// Phải gọi lại hàm này mỗi khi spProducts thay đổi (tải mới, thêm/sửa/xóa sản phẩm).
+function spRecomputeCategories(){
+  const byKey = new Map();   // khóa nhóm -> tập các phân loại gốc có mặt trong nhóm đó
+  for(const p of spProducts){
+    const keys = new Set(p._nhomPhu);
+    if(p._nhom) keys.add(p._nhom);
+    keys.forEach(k=>{
+      let set = byKey.get(k);
+      if(!set){ set = new Set(); byKey.set(k, set); }
+      set.add(p._catBase);
+    });
+  }
+  for(const p of spProducts){
+    if(p._catBase !== 'Khác'){ p._cat = p._catBase; continue; }
+    const keys = new Set(p._nhomPhu);
+    if(p._nhom) keys.add(p._nhom);
+    let isTem = false;
+    for(const k of keys){ if(byKey.get(k)?.has('Tem nhãn')){ isTem = true; break; } }
+    p._cat = isTem ? 'Tem nhãn' : 'Khác';
+  }
 }
 
 /* ---------- LOAD DỮ LIỆU ---------- */
@@ -690,6 +714,7 @@ async function loadAll(){
     if(!currentKhach || currentKhach.id !== kid) return;   // đã chuyển sang khách khác trong lúc chờ
     spProducts = (data || []).map(spPrep);
     spProducts.sort(spCompareByCode);
+    spRecomputeCategories();
   }catch(e){
     spProducts = [];
     console.error('loadAll san_pham:', e);
@@ -1220,6 +1245,7 @@ document.getElementById('spMSaveBtn').addEventListener('click', async ()=>{
       else await loadAll();
     }
     spProducts.sort(spCompareByCode);
+    spRecomputeCategories();
 
     // Lưu DB xong mới xóa file ảnh cũ (nếu đã thay/xóa ảnh)
     if((ctx.newVariants || ctx.removeImage) && ctx.originalImage && ctx.originalImage !== uploadedUrl){
@@ -1250,6 +1276,7 @@ document.getElementById('spMDeleteBtn').addEventListener('click', async ()=>{
     const {error} = await sbClient.from('san_pham').delete().eq('id', ctx.id);
     if(error) throw error;
     spProducts = spProducts.filter(x=>x.id !== ctx.id);
+    spRecomputeCategories();
     await spRemoveImageFiles(ctx.originalImage);
     updateMigrateBtn();
     renderGrid();
@@ -1618,6 +1645,7 @@ async function enterCustomerMode(ma){
   currentKhach = { id: data.khach.id, ten: data.khach.ten };
   spProducts = (data.san_pham || []).map(spPrep);
   spProducts.sort(spCompareByCode);
+  spRecomputeCategories();
   bindCartToKhach(currentKhach);
   resetListFilters();
   setView('app');
