@@ -412,6 +412,11 @@
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">8–24 ký tự chữ hoặc số. Đổi mã thì mã và link cũ của khách này hết dùng được.</div>
       </div>
       <div class="field">
+        <label>Tiền tố mã sản phẩm (để tự nhảy mã tiếp theo)</label>
+        <input type="text" id="khachMPrefix" maxlength="10" autocomplete="off" spellcheck="false" placeholder="VD: TM, AVDN" style="text-transform:uppercase; letter-spacing:.06em;">
+        <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">Chỉ chữ, tối đa 10 ký tự. VD nhập "TM" → thêm sản phẩm sẽ tự gợi ý TM-001, TM-002... Để trống nếu không cần.</div>
+      </div>
+      <div class="field">
         <label>Link gửi khách (bấm vào là vào thẳng, không cần nhập mã)</label>
         <div class="khach-link-row">
           <input type="text" id="khachMLink" readonly>
@@ -630,7 +635,9 @@ function spCompareByCode(a, b){
   if(cb) return 1;
   return 0;          // cả hai không có mã: giữ nguyên thứ tự cũ (mới nhất trước)
 }
-// Gợi ý mã kế tiếp: lấy tiền tố đang dùng nhiều nhất (VD TM), số lớn nhất + 1, giữ số chữ số (001 -> 004)
+// Gợi ý mã kế tiếp: ưu tiên tiền tố đã gán riêng cho khách đang chọn (khach.ma_prefix, VD "TM"),
+// kể cả khi khách chưa có sản phẩm nào -> vẫn gợi ý TM-001. Nếu khách chưa có tiền tố riêng,
+// quay về cách cũ: lấy tiền tố đang dùng nhiều nhất trong sản phẩm hiện có.
 function spNextCode(){
   const stat = {};
   for(const p of spProducts){
@@ -641,10 +648,15 @@ function spNextCode(){
     if(c.num > s.max) s.max = c.num;
     if(c.width > s.width) s.width = c.width;
   }
-  let best = null;
-  for(const k in stat){ if(best === null || stat[k].count > stat[best].count) best = k; }
+  const khachPrefix = currentKhach ? khachNormalizePrefix(currentKhach.ma_prefix || '') : '';
+  let best = khachPrefix || null;
+  if(!best){
+    for(const k in stat){ if(best === null || stat[k].count > stat[best].count) best = k; }
+  }
   if(best === null) return null;
-  return best + '-' + String(stat[best].max + 1).padStart(stat[best].width, '0');
+  const s = stat[best] || { max: 0, width: 3 };
+  const width = s.width || 3;
+  return best + '-' + String(s.max + 1).padStart(width, '0');
 }
 // Tính sẵn 1 lần khi tải/sửa: tên không dấu (để tìm nhanh) và mã (để sắp xếp nhanh)
 // Phân loại tự động theo chữ đầu tiên của tên (không phân biệt hoa/thường/dấu)
@@ -1538,6 +1550,8 @@ document.getElementById('cartSendBtn').addEventListener('click', async ()=>{
 /* ---------- KHÁCH HÀNG: nhập mã để vào, admin chọn khách để quản lý ---------- */
 // Mã khách: chỉ chữ HOA + số (bỏ dấu cách/gạch nối người dùng gõ thêm)
 function khachNormalizeCode(s){ return (s || '').toString().toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+// Tiền tố mã sản phẩm của khách (VD: TM, AVDN) — chỉ chữ, dùng để tự nhảy mã tiếp theo
+function khachNormalizePrefix(s){ return (s || '').toString().trim().toUpperCase().replace(/[^A-Z]/g, '').slice(0, 10); }
 const KHACH_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // bỏ I, L, O, 0, 1 cho khỏi nhầm khi đọc/gõ (31 ký tự)
 function khachGenCode(len){
   len = len || 10;
@@ -1616,7 +1630,7 @@ async function enterCustomerMode(ma){
 async function enterAdminMode(){
   setView('loading');
   try{
-    const {data, error} = await sbClient.from('khach_hang').select('id,ten,ma,hoat_dong').order('created_at', {ascending:true});
+    const {data, error} = await sbClient.from('khach_hang').select('id,ten,ma,hoat_dong,ma_prefix').order('created_at', {ascending:true});
     if(error) throw error;
     khachList = data || [];
   }catch(e){
@@ -1707,6 +1721,7 @@ function openKhachModal(mode){
   document.getElementById('khachModalTitle').textContent = mode === 'edit' ? 'Sửa khách' : 'Thêm khách';
   document.getElementById('khachMName').value = mode === 'edit' ? currentKhach.ten : '';
   document.getElementById('khachMCode').value = mode === 'edit' ? currentKhach.ma : khachGenCode();
+  document.getElementById('khachMPrefix').value = mode === 'edit' ? (currentKhach.ma_prefix || '') : '';
   document.getElementById('khachMActive').checked = mode === 'edit' ? !!currentKhach.hoat_dong : true;
   document.getElementById('khachMDeleteBtn').style.display = mode === 'edit' ? 'inline-block' : 'none';
   document.getElementById('khachSaveStatus').textContent = '';
@@ -1741,16 +1756,17 @@ document.getElementById('khachMSaveBtn').addEventListener('click', async ()=>{
   const saveBtn = document.getElementById('khachMSaveBtn');
   const ten = document.getElementById('khachMName').value.trim();
   const ma = khachNormalizeCode(document.getElementById('khachMCode').value);
+  const maPrefix = khachNormalizePrefix(document.getElementById('khachMPrefix').value);
   if(!ten){ status.textContent = 'Nhập tên khách.'; return; }
   if(!/^[A-Z0-9]{8,24}$/.test(ma)){ status.textContent = 'Mã khách gồm 8–24 chữ hoặc số.'; return; }
   if(ctx.mode === 'edit' && ctx.oldMa && ma !== ctx.oldMa && !confirm('Đổi mã thì mã và link cũ của khách này sẽ không dùng được nữa. Tiếp tục?')) return;
-  const payload = { ten, ma, hoat_dong: document.getElementById('khachMActive').checked };
+  const payload = { ten, ma, hoat_dong: document.getElementById('khachMActive').checked, ma_prefix: maPrefix || null };
   ctx.saving = true; saveBtn.disabled = true;
   status.textContent = 'Đang lưu...';
   try{
     let row;
     if(ctx.mode === 'edit'){
-      const {data, error} = await sbClient.from('khach_hang').update(payload).eq('id', ctx.id).select('id,ten,ma,hoat_dong').maybeSingle();
+      const {data, error} = await sbClient.from('khach_hang').update(payload).eq('id', ctx.id).select('id,ten,ma,hoat_dong,ma_prefix').maybeSingle();
       if(error) throw error;
       if(!data) throw new Error('Không cập nhật được khách (không có quyền?)');
       row = data;
@@ -1758,7 +1774,7 @@ document.getElementById('khachMSaveBtn').addEventListener('click', async ()=>{
       if(idx >= 0) khachList[idx] = row;
       currentKhach = row;
     } else {
-      const {data, error} = await sbClient.from('khach_hang').insert(payload).select('id,ten,ma,hoat_dong').single();
+      const {data, error} = await sbClient.from('khach_hang').insert(payload).select('id,ten,ma,hoat_dong,ma_prefix').single();
       if(error) throw error;
       row = data;
       khachList.push(row);
