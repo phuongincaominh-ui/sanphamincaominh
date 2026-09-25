@@ -95,6 +95,7 @@
   /* thẻ bộ (nhóm nhiều mã) */
   .sp-grid{ align-items:start; }
   .sp-group-badge{ position:absolute; top:9px; right:9px; font-size:11px; font-weight:800; color:var(--white); background:var(--red); padding:4px 10px; border-radius:100px; z-index:2; box-shadow:0 2px 6px rgba(0,0,0,.18); }
+  .sp-group-name-tag{ align-self:flex-start; font-size:11px; font-weight:700; color:var(--ink-soft); background:var(--surface-alt); padding:3px 10px; border-radius:100px; margin-bottom:4px; }
   .sp-group-list{ display:none; flex-direction:column; gap:2px; border-top:1px solid var(--line); margin-top:4px; padding-top:6px; }
   .sp-card.open .sp-group-list{ display:flex; }
   .sp-group-row{ display:flex; align-items:center; gap:9px; padding:6px 0; border-bottom:1px solid var(--line); }
@@ -353,6 +354,7 @@
         <input type="text" id="spMNhom" list="spNhomList" maxlength="100" placeholder="VD: Nhãn tròn 5cm" autocomplete="off">
         <datalist id="spNhomList"></datalist>
         <button type="button" class="code-hint" id="spNhomHint" style="display:none;"></button>
+        <button type="button" class="code-hint" id="spNhomNextHint" style="display:none;"></button>
         <div style="font-size:11.5px; color:var(--ink-soft); line-height:1.5;">Các sản phẩm ghi cùng tên nhóm sẽ hiện chung trong hộp thoại đặt hàng. Để trống nếu sản phẩm đặt riêng.</div>
       </div>
       <div class="field">
@@ -658,6 +660,37 @@ function spNextCode(){
   const width = s.width || 3;
   return best + '-' + String(s.max + 1).padStart(width, '0');
 }
+/* ---------- GỢI Ý NHÓM (BỘ) TIẾP THEO, VD "Bộ 1", "Bộ 2"... ---------- */
+// Lấy số ở cuối tên nhóm, VD "Bộ 12" -> { base:"Bộ ", num:12, width:2 }. Không có số ở cuối thì trả về null.
+function spGroupCode(ten){
+  const m = /^(.*?)(\d+)$/.exec((ten || '').trim());
+  return m ? { base: m[1], num: parseInt(m[2], 10), width: m[2].length } : null;
+}
+// Gợi ý nhóm: { latest, next }
+//  - latest: nhóm gần nhất đang dùng (số lớn nhất hiện có) -> để tiếp tục thêm đúng nhóm đó
+//  - next:   tên nhóm MỚI tiếp theo (số lớn nhất + 1, giữ số chữ số) -> để bắt đầu 1 nhóm mới
+// Lấy theo phần chữ trước số (base) đang dùng nhiều nhất trong các nhóm hiện có của khách đang chọn.
+function spGroupSuggestions(){
+  const seen = new Map();   // khóa nhóm (chuẩn hoá) -> tên hiển thị (spProducts đã sắp theo mã tăng dần)
+  for(const p of spProducts){
+    const name = (p.nhom || '').trim();
+    if(!name) continue;
+    seen.set(p._nhom, name);
+  }
+  const stat = {};   // base -> { count, max, width, maxName }
+  for(const name of seen.values()){
+    const c = spGroupCode(name);
+    if(!c) continue;
+    const s = stat[c.base] || (stat[c.base] = { count: 0, max: 0, width: 0, maxName: '' });
+    s.count++;
+    if(c.num >= s.max){ s.max = c.num; s.width = c.width; s.maxName = name; }
+  }
+  let best = null;
+  for(const k in stat){ if(best === null || stat[k].count > stat[best].count) best = k; }
+  if(best === null) return null;
+  const s = stat[best];
+  return { latest: s.maxName, next: best + String(s.max + 1).padStart(s.width, '0') };
+}
 // Tính sẵn 1 lần khi tải/sửa: tên không dấu (để tìm nhanh) và mã (để sắp xếp nhanh)
 // Phân loại tự động theo chữ đầu tiên của tên (không phân biệt hoa/thường/dấu)
 const SP_CATS = ['Tem nhãn', 'Hộp', 'Khác'];
@@ -820,6 +853,7 @@ function spGroupCardHtml(key, members, matchIds, searching, isAdmin){
       <div class="sp-group-badge">${members.length} nhãn</div>
       <div class="sp-card-img">${spImgHtml(cover)}</div>
       <div class="sp-card-body">
+        ${isAdmin ? `<div class="sp-group-name-tag">Nhóm: ${escapeHtml(cover.nhom.trim())}</div>` : ''}
         <div class="sp-card-name">${escapeHtml(cover.ten)}</div>
         <div class="sp-card-note">${cover.ghi_chu ? escapeHtml(cover.ghi_chu) : ''}</div>
         <div class="sp-group-list">${rows}</div>
@@ -1058,19 +1092,19 @@ function openProductModal(mode, id){
   // gợi ý các tên nhóm đang có (mỗi nhóm 1 dòng)
   const nhomSeen = new Map();
   spProducts.forEach(x=>{ if(x._nhom && !nhomSeen.has(x._nhom)) nhomSeen.set(x._nhom, x.nhom.trim()); });
-  // Gợi ý nhóm (giống gợi ý mã): lấy nhóm của sản phẩm có mã lớn nhất đang có nhóm — thường là nhóm đang làm dở
+  // Gợi ý nhóm: nhóm gần nhất đang dùng (để tiếp tục) + tên nhóm MỚI tiếp theo (tự tăng số, VD Bộ 12 -> Bộ 13)
   const nhomHint = document.getElementById('spNhomHint');
-  let nhomSuggest = null;
-  if(!p || !(p.nhom||'').trim()){
-    for(let i = spProducts.length - 1; i >= 0; i--){
-      const x = spProducts[i];
-      if(x._code && x._nhom){ nhomSuggest = x.nhom.trim(); break; }
-    }
+  const nhomNextHint = document.getElementById('spNhomNextHint');
+  const groupSuggest = (!p || !(p.nhom||'').trim()) ? spGroupSuggestions() : null;
+  nhomHint.style.display = groupSuggest ? 'inline-block' : 'none';
+  if(groupSuggest){
+    nhomHint.textContent = `Nhóm gần nhất: ${groupSuggest.latest} (chạm để dùng tiếp)`;
+    nhomHint.dataset.nhom = groupSuggest.latest;
   }
-  nhomHint.style.display = nhomSuggest ? 'inline-block' : 'none';
-  if(nhomSuggest){
-    nhomHint.textContent = `Nhóm gần nhất: ${nhomSuggest} (chạm để chèn)`;
-    nhomHint.dataset.nhom = nhomSuggest;
+  nhomNextHint.style.display = groupSuggest ? 'inline-block' : 'none';
+  if(groupSuggest){
+    nhomNextHint.textContent = `Nhóm mới: ${groupSuggest.next} (chạm để tạo mới)`;
+    nhomNextHint.dataset.nhom = groupSuggest.next;
   }
   document.getElementById('spNhomList').innerHTML = [...nhomSeen.values()].map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
   spNhomPhuInit(p);
@@ -1175,6 +1209,12 @@ document.getElementById('spCodeHint').addEventListener('click', (e)=>{
 document.getElementById('spNhomHint').addEventListener('click', ()=>{
   const input = document.getElementById('spMNhom');
   input.value = document.getElementById('spNhomHint').dataset.nhom || '';
+  spNhomPhuRender();
+  input.focus();
+});
+document.getElementById('spNhomNextHint').addEventListener('click', ()=>{
+  const input = document.getElementById('spMNhom');
+  input.value = document.getElementById('spNhomNextHint').dataset.nhom || '';
   spNhomPhuRender();
   input.focus();
 });
